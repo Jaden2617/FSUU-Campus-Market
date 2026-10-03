@@ -5,6 +5,7 @@ import Feed from "./components/Feed";
 import Messages from "./components/Messages";
 import CreatePostModal from "./components/CreatePostModal";
 import ProfileModal from "./components/ProfileModal";
+import ServerWake from "./components/ServerWake";
 import Avatar from "./components/Avatar";
 import Icon from "./components/Icon";
 
@@ -69,11 +70,17 @@ function App() {
   }
 
   if (!token || !user) {
-    return <AuthPage onLogin={handleLogin} />;
+    return (
+      <>
+        <ServerWake />
+        <AuthPage onLogin={handleLogin} />
+      </>
+    );
   }
 
   return (
     <div className="app">
+      <ServerWake />
       <nav className="topbar">
         <div className="topbar-inner">
           <button className="brand" onClick={() => setPage("feed")}>

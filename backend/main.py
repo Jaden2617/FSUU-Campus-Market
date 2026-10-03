@@ -1,39 +1,42 @@
+import io
 import os
-import uuid
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Form, File, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, Form, File, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel
 from sqlalchemy import or_, and_
 
-from database import User, Post, Comment, Reaction, Message
+from database import User, Post, Comment, Reaction, Message, Photo
 from auth import get_db, hash_password, check_password, create_token, get_current_user
 
-
-SCHOOL_EMAIL = "@uiros.edu.ph"
+# ⚠️ Change this to the ending of your FSUU email (keep the @).
+# Online, it is set in Render's "Environment" settings instead.
+SCHOOL_EMAIL = os.getenv("SCHOOL_EMAIL", "@urios.edu.ph").strip().lower()
 
 CATEGORIES = ["Food", "Preloved", "Services", "School Supplies", "Gadgets", "Others"]
 REACTIONS = ["👍", "❤️", "😮", "😂"]
 
-UPLOAD_DIR = "uploads"
-ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-MAX_PHOTO_SIZE = 5 * 1024 * 1024  # 5 MB
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_PHOTO_SIZE = 10 * 1024 * 1024  # 10 MB (photos are shrunk before saving)
 
 app = FastAPI(title="FSUU Campus Market")
 
+# Login uses a token in the request header (not cookies),
+# so it's safe to let the website call the API from any address.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Lets the browser open photos at http://127.0.0.1:8000/uploads/...
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# Old photos from before this update (saved as files on your computer)
+UPLOAD_DIR = "uploads"
+if os.path.isdir(UPLOAD_DIR):
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 # ---------- Data shapes ----------
@@ -89,21 +92,40 @@ def public_user(user):
     return {"id": user.id, "name": user.name, "contact": user.contact, "avatar_url": user.avatar_url}
 
 
-async def save_photo(photo: UploadFile):
-    """Checks a photo, saves it in the uploads folder, and returns its address."""
+async def save_photo(photo: UploadFile, db, max_side=1280):
+    """Checks a photo, shrinks it, saves it in the database, and returns its address."""
     if photo.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Photo must be JPG, PNG, or WEBP")
     contents = await photo.read()
     if len(contents) > MAX_PHOTO_SIZE:
-        raise HTTPException(status_code=400, detail="Photo must be smaller than 5 MB")
-    filename = f"{uuid.uuid4().hex}{ALLOWED_TYPES[photo.content_type]}"
-    with open(os.path.join(UPLOAD_DIR, filename), "wb") as f:
-        f.write(contents)
-    return f"/uploads/{filename}"
+        raise HTTPException(status_code=400, detail="Photo must be smaller than 10 MB")
+
+    try:
+        image = Image.open(io.BytesIO(contents))
+        image = ImageOps.exif_transpose(image)  # keeps phone photos the right way up
+        image = image.convert("RGB")
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(status_code=400, detail="That file is not a valid photo")
+
+    # Shrink big phone photos so they load fast and take less space
+    image.thumbnail((max_side, max_side))
+    output = io.BytesIO()
+    image.save(output, format="JPEG", quality=82, optimize=True)
+
+    saved = Photo(data=output.getvalue(), content_type="image/jpeg")
+    db.add(saved)
+    db.flush()  # gives the photo its id
+    return f"/photos/{saved.id}"
 
 
-def delete_photo(image_url):
-    if image_url:
+def delete_photo(image_url, db):
+    if not image_url:
+        return
+    if image_url.startswith("/photos/"):
+        photo = db.get(Photo, int(image_url.rsplit("/", 1)[1]))
+        if photo:
+            db.delete(photo)
+    else:  # old photo saved as a file
         path = os.path.join(UPLOAD_DIR, os.path.basename(image_url))
         if os.path.exists(path):
             os.remove(path)
@@ -173,6 +195,19 @@ def home():
     return {"message": "Campus Market is running!"}
 
 
+@app.get("/photos/{photo_id}")
+def get_photo(photo_id: int, db=Depends(get_db)):
+    photo = db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    # Photos never change, so the browser can keep them for a long time
+    return Response(
+        content=photo.data,
+        media_type=photo.content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 @app.post("/register")
 def register(data: RegisterData, db=Depends(get_db)):
     email = data.email.strip().lower()
@@ -222,8 +257,8 @@ def update_profile(data: ProfileData, db=Depends(get_db), me=Depends(get_current
 
 @app.post("/me/avatar")
 async def upload_avatar(photo: UploadFile = File(...), db=Depends(get_db), me=Depends(get_current_user)):
-    new_url = await save_photo(photo)
-    delete_photo(me.avatar_url)  # remove the old picture
+    new_url = await save_photo(photo, db, max_side=400)
+    delete_photo(me.avatar_url, db)  # remove the old picture
     me.avatar_url = new_url
     db.commit()
     return user_info(me)
@@ -231,7 +266,7 @@ async def upload_avatar(photo: UploadFile = File(...), db=Depends(get_db), me=De
 
 @app.delete("/me/avatar")
 def remove_avatar(db=Depends(get_db), me=Depends(get_current_user)):
-    delete_photo(me.avatar_url)
+    delete_photo(me.avatar_url, db)
     me.avatar_url = None
     db.commit()
     return user_info(me)
@@ -281,7 +316,7 @@ async def create_post(
     if category not in CATEGORIES:
         category = "Others"
 
-    image_url = await save_photo(photo) if photo and photo.filename else None
+    image_url = await save_photo(photo, db) if photo and photo.filename else None
 
     post = Post(
         user_id=me.id,
@@ -318,7 +353,7 @@ def delete_post(post_id: int, db=Depends(get_db), me=Depends(get_current_user)):
     db.query(Comment).filter(Comment.post_id == post_id).delete()
     db.query(Reaction).filter(Reaction.post_id == post_id).delete()
     db.query(Message).filter(Message.post_id == post_id).update({Message.post_id: None})
-    delete_photo(post.image_url)
+    delete_photo(post.image_url, db)
     db.delete(post)
     db.commit()
     return {"ok": True}

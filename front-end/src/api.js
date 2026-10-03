@@ -1,5 +1,6 @@
-// Address of your FastAPI backend
-export const API = "http://127.0.0.1:8000";
+// Address of your FastAPI backend.
+// On your computer it's 127.0.0.1:8000. Online, Render fills in VITE_API_URL.
+export const API = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 export function imageUrl(path) {
   return path ? `${API}${path}` : null;

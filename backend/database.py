@@ -1,12 +1,24 @@
+import os
 from datetime import datetime
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, DateTime, ForeignKey,
-    Boolean, Text, UniqueConstraint, inspect, text,
+    Boolean, Text, UniqueConstraint, LargeBinary, inspect, text,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 
-# New file name, so the old market.db is not used anymore
-engine = create_engine("sqlite:///./campus_market.db", connect_args={"check_same_thread": False})
+# On your computer: uses the SQLite file campus_market.db
+# Online: uses the Postgres database in the DATABASE_URL setting (from Neon)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./campus_market.db")
+
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    # Neon gives "postgresql://..." — tell SQLAlchemy to use the psycopg driver
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+    # pool_pre_ping reconnects after the free database goes to sleep
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
+
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -58,6 +70,16 @@ class Reaction(Base):
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     emoji = Column(String, nullable=False)
+
+
+class Photo(Base):
+    """Photos are saved inside the database, so they are not lost when the
+    free online server restarts."""
+    __tablename__ = "photos"
+    id = Column(Integer, primary_key=True)
+    data = Column(LargeBinary, nullable=False)
+    content_type = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
 
 
 class Message(Base):

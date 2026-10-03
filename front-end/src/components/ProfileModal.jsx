@@ -34,8 +34,8 @@ export default function ProfileModal({ call, user, onClose, onUpdated }) {
     const file = e.target.files[0];
     e.target.value = ""; // lets you pick the same file again later
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Photo must be smaller than 5 MB");
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Photo must be smaller than 10 MB");
       return;
     }
     const data = new FormData();

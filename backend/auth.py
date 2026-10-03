@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
@@ -5,7 +6,8 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from database import SessionLocal, User
 
-SECRET_KEY = "change-this-to-a-long-random-secret"
+# Online, set SECRET_KEY in Render's "Environment" settings
+SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-long-random-secret")
 ALGORITHM = "HS256"
 
 security = HTTPBearer()

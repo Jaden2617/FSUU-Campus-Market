@@ -1351,6 +1351,42 @@ img.avatar {
   border-radius: 999px;
 }
 
+/* ============ "Waking up the server" notice ============ */
+.wake-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 32px);
+  padding: 12px 18px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--navy);
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(11, 29, 77, 0.4);
+  transform: translateX(-50%);
+  animation: fade 0.3s ease-out;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ============ Phones and small screens ============ */
 @media (max-width: 900px) {
   .feed-layout {

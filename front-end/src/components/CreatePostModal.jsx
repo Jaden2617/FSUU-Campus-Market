@@ -28,8 +28,8 @@ export default function CreatePostModal({ call, user, defaultType, onClose, onCr
   function handlePhoto(e) {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Photo must be smaller than 5 MB");
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Photo must be smaller than 10 MB");
       return;
     }
     setError("");
