@@ -1,162 +1,174 @@
-import { useEffect, useState } from "react";
-
-const API = "http://127.0.0.1:8000";
-
-const emptyListing = { title: "", price: "", category: "Food", description: "" };
-const emptyAuth = { name: "", email: "", contact: "", password: "" };
+import { useCallback, useEffect, useState } from "react";
+import { api } from "./api";
+import AuthPage from "./components/AuthPage";
+import Feed from "./components/Feed";
+import Messages from "./components/Messages";
+import CreatePostModal from "./components/CreatePostModal";
+import ProfileModal from "./components/ProfileModal";
+import Avatar from "./components/Avatar";
+import Icon from "./components/Icon";
 
 function App() {
-  const [listings, setListings] = useState([]);
-  const [listingForm, setListingForm] = useState(emptyListing);
-  const [authForm, setAuthForm] = useState(emptyAuth);
-  const [mode, setMode] = useState("login");
-  const [error, setError] = useState("");
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem("user") || "null"));
+  const [token, setToken] = useState(() => localStorage.getItem("token"));
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("user") || "null"));
+  const [page, setPage] = useState("feed"); // "feed" or "messages"
+  const [search, setSearch] = useState("");
+  const [createType, setCreateType] = useState(null); // null = modal closed
+  const [newPost, setNewPost] = useState(null);
+  const [chatWith, setChatWith] = useState(null); // { user, post } when "Message" is clicked
+  const [unread, setUnread] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
 
-  function loadListings() {
-    fetch(`${API}/listings`)
-      .then((res) => res.json())
-      .then((data) => setListings(data));
-  }
-
-  useEffect(() => {
-    loadListings();
-  }, []);
-
-  function handleAuthChange(e) {
-    setAuthForm({ ...authForm, [e.target.name]: e.target.value });
-  }
-
-  function handleListingChange(e) {
-    setListingForm({ ...listingForm, [e.target.name]: e.target.value });
-  }
-
-  function showError(data) {
-    setError(typeof data.detail === "string" ? data.detail : "Please fill in all fields correctly");
-  }
-
-  async function handleAuth(e) {
-    e.preventDefault();
-    setError("");
-    const res = await fetch(`${API}/${mode}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(authForm),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      showError(data);
-      return;
-    }
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
-    setToken(data.token);
-    setUser(data.user);
-    setAuthForm(emptyAuth);
-  }
-
-  function logout() {
+  const logout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setToken(null);
     setUser(null);
+    setPage("feed");
+  }, []);
+
+  // Every component uses this to talk to the backend.
+  // If the login expired, it logs you out automatically.
+  const call = useCallback(
+    (path, options = {}) =>
+      api(path, { ...options, token }).catch((err) => {
+        if (err.status === 401) logout();
+        throw err;
+      }),
+    [token, logout]
+  );
+
+  function handleLogin(data) {
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    setToken(data.token);
+    setUser(data.user);
   }
 
-  async function handleSell(e) {
-    e.preventDefault();
-    setError("");
-    const res = await fetch(`${API}/listings`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ ...listingForm, price: Number(listingForm.price) }),
-    });
-    if (res.status === 401 || res.status === 403) {
-      logout();
-      setError("Please log in again");
-      return;
-    }
-    if (!res.ok) {
-      showError(await res.json());
-      return;
-    }
-    setListingForm(emptyListing);
-    loadListings();
+  // Check for new messages every 5 seconds (for the red badge)
+  const refreshUnread = useCallback(() => {
+    if (!token) return;
+    call("/unread-count").then((d) => setUnread(d.count)).catch(() => {});
+  }, [token, call]);
+
+  useEffect(() => {
+    refreshUnread();
+    const timer = setInterval(refreshUnread, 5000);
+    return () => clearInterval(timer);
+  }, [refreshUnread]);
+
+  // Save new profile info (name, contact, picture) everywhere
+  function updateUser(updated) {
+    localStorage.setItem("user", JSON.stringify(updated));
+    setUser(updated);
+  }
+
+  function openChat(otherUser, post) {
+    setChatWith({ user: otherUser, post });
+    setPage("messages");
+  }
+
+  if (!token || !user) {
+    return <AuthPage onLogin={handleLogin} />;
   }
 
   return (
-    <div className="page">
-      <header className="header">
-        <h1>FSUU Campus Market</h1>
-        {user && (
-          <div className="user-box">
-            <span>Hi, {user.name}!</span>
-            <button className="link-btn" onClick={logout}>Log out</button>
-          </div>
-        )}
-      </header>
+    <div className="app">
+      <nav className="topbar">
+        <div className="topbar-inner">
+          <button className="brand" onClick={() => setPage("feed")}>
+            <span className="brand-mark">CM</span>
+            <span className="brand-text">FSUU Campus Market</span>
+          </button>
 
-      {user ? (
-        <form className="post-form" onSubmit={handleSell}>
-          <h2>Sell an item</h2>
-          <input name="title" placeholder="Item name" value={listingForm.title} onChange={handleListingChange} required />
-          <input name="price" type="number" placeholder="Price (₱)" value={listingForm.price} onChange={handleListingChange} required />
-          <select name="category" value={listingForm.category} onChange={handleListingChange}>
-            <option>Food</option>
-            <option>Preloved</option>
-            <option>Services</option>
-          </select>
-          <textarea name="description" placeholder="Description" value={listingForm.description} onChange={handleListingChange} />
-          <p className="hint">Buyers will contact you at: {user.contact}</p>
-          {error && <p className="error">{error}</p>}
-          <button type="submit">Post item</button>
-        </form>
-      ) : (
-        <form className="post-form" onSubmit={handleAuth}>
-          <h2>{mode === "login" ? "Log in to sell" : "Create an account"}</h2>
-          {mode === "register" && (
-            <>
-              <input name="name" placeholder="Full name" value={authForm.name} onChange={handleAuthChange} required />
-              <input name="contact" placeholder="Contact (FB name or phone)" value={authForm.contact} onChange={handleAuthChange} required />
-            </>
-          )}
-          <input name="email" type="email" placeholder="FSUU email" value={authForm.email} onChange={handleAuthChange} required />
-          <input name="password" type="password" placeholder="Password" value={authForm.password} onChange={handleAuthChange} required />
-          {error && <p className="error">{error}</p>}
-          <button type="submit">{mode === "login" ? "Log in" : "Register"}</button>
-          <p className="switch">
-            {mode === "login" ? "No account yet? " : "Already have an account? "}
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => {
-                setMode(mode === "login" ? "register" : "login");
-                setError("");
+          <label className="search">
+            <Icon name="search" size={18} />
+            <input
+              placeholder="Search the market"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage("feed");
               }}
+            />
+          </label>
+
+          <div className="nav-tabs">
+            <button
+              className={`nav-tab ${page === "feed" ? "active" : ""}`}
+              onClick={() => setPage("feed")}
+              title="News Feed"
             >
-              {mode === "login" ? "Register" : "Log in"}
+              <Icon name="home" size={22} />
+              <span className="nav-label">Feed</span>
             </button>
-          </p>
-        </form>
+            <button
+              className={`nav-tab ${page === "messages" ? "active" : ""}`}
+              onClick={() => setPage("messages")}
+              title="Messages"
+            >
+              <Icon name="chat" size={22} />
+              <span className="nav-label">Messages</span>
+              {unread > 0 && <span className="badge">{unread > 9 ? "9+" : unread}</span>}
+            </button>
+          </div>
+
+          <div className="nav-user">
+            <button className="nav-profile" onClick={() => setShowProfile(true)} title="Your profile">
+              <Avatar user={user} size={34} />
+              <span className="nav-name">{user.name.split(" ")[0]}</span>
+            </button>
+            <button className="icon-btn" onClick={logout} title="Log out">
+              <Icon name="logout" size={20} />
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      <main className="main">
+        {page === "feed" ? (
+          <Feed
+            call={call}
+            user={user}
+            search={search}
+            newPost={newPost}
+            onCreate={(type) => setCreateType(type)}
+            onOpenProfile={() => setShowProfile(true)}
+            onMessage={openChat}
+          />
+        ) : (
+          <Messages
+            call={call}
+            user={user}
+            chatWith={chatWith}
+            onChatOpened={() => setChatWith(null)}
+            onRead={refreshUnread}
+          />
+        )}
+      </main>
+
+      {page === "feed" && (
+        <button className="fab" onClick={() => setCreateType("selling")} title="Create a post">
+          <Icon name="plus" size={28} />
+        </button>
       )}
 
-      <h2>Items for sale</h2>
-      {listings.length === 0 && <p>No items yet. Be the first to sell!</p>}
+      {showProfile && (
+        <ProfileModal call={call} user={user} onClose={() => setShowProfile(false)} onUpdated={updateUser} />
+      )}
 
-      <div className="grid">
-        {listings.map((item) => (
-          <div className="card" key={item.id}>
-            <span className="tag">{item.category}</span>
-            <h3>{item.title}</h3>
-            <p className="price">₱{item.price.toLocaleString()}</p>
-            <p>{item.description}</p>
-            <p className="seller">Seller: {item.seller_name} · {item.contact}</p>
-          </div>
-        ))}
-      </div>
+      {createType && (
+        <CreatePostModal
+          call={call}
+          user={user}
+          defaultType={createType}
+          onClose={() => setCreateType(null)}
+          onCreated={(post) => {
+            setNewPost(post);
+            setCreateType(null);
+          }}
+        />
+      )}
     </div>
   );
 }
