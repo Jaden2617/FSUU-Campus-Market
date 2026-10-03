@@ -19,6 +19,10 @@ ADMIN_EMAILS = _list(os.getenv("ADMIN_EMAILS", "jaden.autentico@urios.edu.ph"))
 # Signing key for login tokens (Render: set SECRET_KEY to long random text)
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-long-random-secret")
 
+# ---- "Continue with Google" (optional) ----
+# Leave empty to hide the Google button. Get it from Google Cloud > Credentials.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "962938590938-61l7gq7l9j41phk8t0d01e12g3jsrc2s.apps.googleusercontent.com").strip()
+
 # ---- Email verification codes (optional) ----
 # Leave BREVO_API_KEY empty to turn verification off.
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()

@@ -42,6 +42,7 @@ class User(Base):
     bio = Column(Text, default="")
     banned = Column(Boolean, default=False)           # blocked by an admin
     email_verified = Column(Boolean, default=True)
+    google_sub = Column(String, nullable=True)        # Google account ID (if they use Google sign-in)
     verify_code_hash = Column(String, nullable=True)  # 6-digit email code (scrambled)
     verify_expires = Column(DateTime, nullable=True)
     verified_until = Column(DateTime, nullable=True)  # paid "Verified seller" badge
@@ -234,6 +235,7 @@ NEW_COLUMNS = {
         "verify_code_hash": "VARCHAR",
         "verify_expires": "TIMESTAMP",
         "verified_until": "TIMESTAMP",
+        "google_sub": "VARCHAR",
     },
     "posts": {
         "meetup_spot": "VARCHAR",

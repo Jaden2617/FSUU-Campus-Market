@@ -34,6 +34,11 @@ async def save_photo(photo: UploadFile, db, max_side=1280):
     contents = await photo.read()
     if len(contents) > MAX_PHOTO_SIZE:
         raise HTTPException(status_code=400, detail="Photo must be smaller than 10 MB")
+    return save_image_bytes(contents, db, max_side)
+
+
+def save_image_bytes(contents, db, max_side=1280):
+    """Shrinks raw image bytes and saves them in the database."""
     try:
         image = Image.open(io.BytesIO(contents))
         image = ImageOps.exif_transpose(image)  # keeps phone photos the right way up

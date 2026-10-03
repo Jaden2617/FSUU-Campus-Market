@@ -2,7 +2,10 @@
 import hashlib
 import secrets
 import time
+import urllib.request
 from datetime import timedelta
+
+import jwt
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from pydantic import BaseModel
@@ -11,7 +14,7 @@ import config
 from auth import get_db, hash_password, check_password, create_token, get_current_user
 from database import User, utc_now
 from emailer import send_verification_code
-from helpers import user_info, save_photo, delete_photo
+from helpers import user_info, save_photo, save_image_bytes, delete_photo
 
 router = APIRouter()
 
@@ -39,6 +42,10 @@ class VerifyData(BaseModel):
 
 class EmailData(BaseModel):
     email: str
+
+
+class GoogleData(BaseModel):
+    credential: str  # the ID token Google gives the website
 
 
 class ProfileData(BaseModel):
@@ -84,6 +91,7 @@ def get_config():
         "gcash_number": config.GCASH_NUMBER,
         "gcash_name": config.GCASH_NAME,
         "max_photos": config.MAX_PHOTOS,
+        "google_client_id": config.GOOGLE_CLIENT_ID or None,
     }
 
 
@@ -122,6 +130,8 @@ def register(data: RegisterData, db=Depends(get_db)):
 def login(data: LoginData, db=Depends(get_db)):
     email = data.email.strip().lower()
     user = db.query(User).filter(User.email == email).first()
+    if user and user.password_hash.startswith(GOOGLE_ONLY):
+        raise HTTPException(status_code=400, detail="This account uses Google. Tap “Continue with Google” instead.")
     if not user or not check_password(data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Wrong email or password")
     if user.banned:
@@ -197,3 +207,74 @@ def remove_avatar(db=Depends(get_db), me=Depends(get_current_user)):
     me.avatar_url = None
     db.commit()
     return user_info(me)
+
+
+# ======================= Continue with Google =======================
+
+GOOGLE_ONLY = "google-only:"  # password placeholder for accounts made with Google
+_google_keys = jwt.PyJWKClient("https://www.googleapis.com/oauth2/v3/certs", cache_keys=True)
+
+
+def verify_google_token(credential):
+    """Checks the token really came from Google, for our app, and isn't expired."""
+    try:
+        signing_key = _google_keys.get_signing_key_from_jwt(credential)
+        return jwt.decode(
+            credential,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=config.GOOGLE_CLIENT_ID,
+            issuer=["accounts.google.com", "https://accounts.google.com"],
+            leeway=30,
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Google sign-in failed. Please try again.")
+
+
+def _copy_google_photo(url, db):
+    """Uses the person's Google profile picture as their avatar (if it works)."""
+    if not url or not url.startswith("https://"):
+        return None
+    try:
+        with urllib.request.urlopen(url.replace("=s96-c", "=s400-c"), timeout=5) as response:
+            return save_image_bytes(response.read(4 * 1024 * 1024), db, max_side=400)
+    except Exception:
+        return None
+
+
+@router.post("/auth/google")
+def google_login(data: GoogleData, db=Depends(get_db)):
+    if not config.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=400, detail="Google sign-in is not set up yet")
+    info = verify_google_token(data.credential)
+
+    email = (info.get("email") or "").strip().lower()
+    if not info.get("email_verified") or not email:
+        raise HTTPException(status_code=400, detail="Your Google email isn't verified")
+    if not email.endswith(config.SCHOOL_EMAIL):
+        raise HTTPException(status_code=400, detail=f"Please use your FSUU Google account ({config.SCHOOL_EMAIL})")
+
+    sub = info["sub"]
+    user = db.query(User).filter(User.google_sub == sub).first() or db.query(User).filter(User.email == email).first()
+    is_new = user is None
+
+    if user and user.banned:
+        raise HTTPException(status_code=403, detail="Your account has been suspended. Contact the admin.")
+
+    if is_new:
+        user = User(
+            email=email,
+            name=(info.get("name") or email.split("@")[0]).strip()[:80],
+            contact="",  # asked right after the first sign-in
+            password_hash=GOOGLE_ONLY + secrets.token_hex(16),
+        )
+        db.add(user)
+        db.flush()
+    user.google_sub = sub
+    user.email_verified = True  # Google already checked the email
+    user.verify_code_hash = None
+    if not user.avatar_url:
+        user.avatar_url = _copy_google_photo(info.get("picture"), db)
+    db.commit()
+    db.refresh(user)
+    return {**_login_response(user), "new": is_new}
