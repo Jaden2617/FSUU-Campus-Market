@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, DateTime, ForeignKey,
     Boolean, Text, UniqueConstraint, LargeBinary, inspect, text,
@@ -20,6 +20,12 @@ else:
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
 
 SessionLocal = sessionmaker(bind=engine)
+
+
+def utc_now():
+    """All times are saved in UTC (world time). The browser converts them
+    to Philippine time, so "Just now" is correct on any server."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 Base = declarative_base()
 
 
@@ -31,7 +37,7 @@ class User(Base):
     contact = Column(String, nullable=False)
     password_hash = Column(String, nullable=False)
     avatar_url = Column(String, nullable=True)  # profile picture
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class Post(Base):
@@ -46,7 +52,7 @@ class Post(Base):
     description = Column(Text, default="")
     image_url = Column(String, nullable=True)
     status = Column(String, default="available")  # available / sold / found
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
     user = relationship("User")
 
@@ -57,7 +63,7 @@ class Comment(Base):
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
     user = relationship("User")
 
@@ -79,7 +85,7 @@ class Photo(Base):
     id = Column(Integer, primary_key=True)
     data = Column(LargeBinary, nullable=False)
     content_type = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class Message(Base):
@@ -90,7 +96,7 @@ class Message(Base):
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=True)  # which item they're asking about
     text = Column(Text, nullable=False)
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=utc_now)
 
 
 Base.metadata.create_all(bind=engine)

@@ -12,7 +12,7 @@ from sqlalchemy import or_, and_
 from database import User, Post, Comment, Reaction, Message, Photo
 from auth import get_db, hash_password, check_password, create_token, get_current_user
 
-# ⚠️ Change this to the ending of your FSUU email (keep the @).
+
 # Online, it is set in Render's "Environment" settings instead.
 SCHOOL_EMAIL = os.getenv("SCHOOL_EMAIL", "@urios.edu.ph").strip().lower()
 
@@ -77,6 +77,11 @@ class ProfileData(BaseModel):
 
 
 # ---------- Helpers ----------
+
+def iso_time(dt):
+    """Sends the time with a "Z" so the browser knows it's UTC."""
+    return dt.isoformat() + "Z"
+
 
 def user_info(user):
     return {
@@ -151,7 +156,7 @@ def post_info(post, me, db):
         "description": post.description,
         "image_url": post.image_url,
         "status": post.status,
-        "created_at": post.created_at.isoformat(),
+        "created_at": iso_time(post.created_at),
         "user": public_user(post.user),
         "reactions": counts,
         "reaction_total": len(reactions),
@@ -165,7 +170,7 @@ def comment_info(comment):
     return {
         "id": comment.id,
         "text": comment.text,
-        "created_at": comment.created_at.isoformat(),
+        "created_at": iso_time(comment.created_at),
         "user": public_user(comment.user),
     }
 
@@ -177,7 +182,7 @@ def message_info(msg):
         "receiver_id": msg.receiver_id,
         "post_id": msg.post_id,
         "text": msg.text,
-        "created_at": msg.created_at.isoformat(),
+        "created_at": iso_time(msg.created_at),
     }
 
 
@@ -419,7 +424,7 @@ def conversations(db=Depends(get_db), me=Depends(get_current_user)):
                 "user": public_user(other),
                 "last_message": m.text,
                 "last_from_me": m.sender_id == me.id,
-                "created_at": m.created_at.isoformat(),
+                "created_at": iso_time(m.created_at),
                 "unread": 0,
             }
         if m.receiver_id == me.id and not m.is_read:
