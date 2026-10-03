@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { REACTIONS, imageUrl, peso, timeAgo } from "../api";
 import Avatar from "./Avatar";
 import Icon from "./Icon";
@@ -14,6 +14,45 @@ export default function PostCard({ post, call, user, onChange, onDelete, onMessa
   const isLooking = post.type === "looking";
   const author = post.is_mine ? user : post.user; // shows your newest photo right away
   const isDone = post.status !== "available";
+
+  // ---- Reactions: hover (laptop) or long-press (phone) opens the picker ----
+  const pressTimer = useRef(null);
+  const longPressed = useRef(false);
+  const reactWrap = useRef(null);
+
+  function startPress(e) {
+    if (e.pointerType === "mouse") return;
+    longPressed.current = false;
+    pressTimer.current = setTimeout(() => {
+      longPressed.current = true;
+      setShowPicker(true);
+      if (navigator.vibrate) navigator.vibrate(15); // small buzz, like Facebook
+    }, 400);
+  }
+
+  function cancelPress() {
+    clearTimeout(pressTimer.current);
+  }
+
+  function handleLikeClick() {
+    if (longPressed.current) {
+      longPressed.current = false; // it was a long press: keep the picker open
+      return;
+    }
+    react(post.my_reaction || "👍");
+  }
+
+  // Tapping anywhere else closes the picker
+  useEffect(() => {
+    if (!showPicker) return;
+    function closeIfOutside(e) {
+      if (reactWrap.current && !reactWrap.current.contains(e.target)) setShowPicker(false);
+    }
+    document.addEventListener("pointerdown", closeIfOutside);
+    return () => document.removeEventListener("pointerdown", closeIfOutside);
+  }, [showPicker]);
+
+  useEffect(() => () => clearTimeout(pressTimer.current), []);
 
   async function react(emoji) {
     setShowPicker(false);
@@ -124,7 +163,11 @@ export default function PostCard({ post, call, user, onChange, onDelete, onMessa
       )}
 
       <div className="post-actions">
-        <div className="react-wrap" onMouseLeave={() => setShowPicker(false)}>
+        <div
+          className="react-wrap"
+          ref={reactWrap}
+          onPointerLeave={(e) => e.pointerType === "mouse" && setShowPicker(false)}
+        >
           {showPicker && (
             <div className="react-picker">
               {REACTIONS.map((emoji) => (
@@ -136,9 +179,14 @@ export default function PostCard({ post, call, user, onChange, onDelete, onMessa
           )}
           <button
             className={`action ${post.my_reaction ? "reacted" : ""}`}
-            onClick={() => react(post.my_reaction || "👍")}
-            onMouseEnter={() => setShowPicker(true)}
-            title="Click to like, hover for more reactions"
+            onClick={handleLikeClick}
+            onPointerEnter={(e) => e.pointerType === "mouse" && setShowPicker(true)}
+            onPointerDown={startPress}
+            onPointerUp={cancelPress}
+            onPointerCancel={cancelPress}
+            onPointerLeave={cancelPress}
+            onContextMenu={(e) => e.preventDefault()}
+            title="Tap to like. Hold (or hover) for more reactions"
           >
             <span className="action-emoji">{post.my_reaction || "👍"}</span>
             {post.my_reaction ? "Reacted" : "Like"}
