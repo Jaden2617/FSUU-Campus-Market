@@ -1,78 +1,40 @@
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #f4f6fb;
-  color: #222;
-}
-
-.page {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 24px 16px;
-}
-
-h1 {
-  color: #1a3d8f;
-}
-
-.post-form {
-  background: white;
-  padding: 20px;
-  border-radius: 12px;
+.header {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  margin-bottom: 30px;
 }
 
-.post-form input,
-.post-form select,
-.post-form textarea {
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  font-size: 15px;
+.user-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.post-form button {
-  padding: 12px;
-  background: #1a3d8f;
-  color: white;
+.link-btn,
+.post-form .link-btn {
+  background: none;
   border: none;
-  border-radius: 8px;
-  font-size: 16px;
+  padding: 0;
+  color: #1a3d8f;
+  font-weight: bold;
+  font-size: 15px;
   cursor: pointer;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+.error {
+  color: #c0392b;
+  margin: 0;
 }
 
-.card {
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.tag {
-  background: #e6ecfa;
-  color: #1a3d8f;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 20px;
-}
-
-.price {
-  font-size: 20px;
-  font-weight: bold;
-  color: #0a8f4a;
-}
-
-.seller {
+.hint {
   font-size: 13px;
   color: #666;
+  margin: 0;
+}
+
+.switch {
+  text-align: center;
+  margin: 0;
 }
