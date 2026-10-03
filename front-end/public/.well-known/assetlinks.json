@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.onrender.uriosmarket.twa",
+    "sha256_cert_fingerprints": ["E0:15:2C:65:2A:5A:F2:D1:60:E5:CE:E7:EE:E7:16:21:24:3E:FE:47:8A:63:96:38:7F:6B:CF:48:DF:6F:4A:EA"]
+  }
+}]
