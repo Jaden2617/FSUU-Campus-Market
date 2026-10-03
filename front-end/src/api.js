@@ -52,5 +52,14 @@ export function timeAgo(iso) {
   return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
 }
 
-export const CATEGORIES = ["Food", "Preloved", "Services", "School Supplies", "Gadgets", "Others"];
+export function longDate(iso) {
+  return new Date(iso).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" });
+}
+
+export function shortDateTime(iso) {
+  return new Date(iso).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+// Used until the real list arrives from the backend (/config)
+export const CATEGORIES = ["Food", "Preloved", "Services", "School Supplies", "Gadgets", "Clothes", "Others"];
 export const REACTIONS = ["👍", "❤️", "😮", "😂"];

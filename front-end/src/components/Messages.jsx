@@ -1,130 +1,172 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { imageUrl, peso, timeAgo } from "../api";
-import Avatar from "./Avatar";
+import { useApp } from "../context";
+import { navigate } from "../router";
+import { imageUrl, peso, shortDateTime, timeAgo } from "../api";
+import Avatar, { UserName } from "./Avatar";
 import Icon from "./Icon";
 
-export default function Messages({ call, user, chatWith, onChatOpened, onRead }) {
-  const [convos, setConvos] = useState([]);
-  const [active, setActive] = useState(null); // the person you're chatting with
-  const [thread, setThread] = useState({ messages: [], posts: {} });
-  const [draft, setDraft] = useState("");
-  const [aboutPost, setAboutPost] = useState(null); // item the next message is about
-  const [error, setError] = useState("");
-  const bottomRef = useRef(null);
-
-  // Clicked "Message" on a post: open that chat with a ready-made first message
+// Runs a function every few seconds, but only while the tab is visible
+function usePolling(fn, ms) {
   useEffect(() => {
-    if (!chatWith) return;
-    const { user: other, post } = chatWith;
-    setActive(other);
+    fn();
+    const timer = setInterval(() => document.visibilityState === "visible" && fn(), ms);
+    return () => clearInterval(timer);
+  }, [fn, ms]);
+}
+
+export default function Messages({ activeId, pendingChat, onPendingUsed }) {
+  const { call, user, refreshBadges } = useApp();
+  const [convos, setConvos] = useState([]);
+  const [thread, setThread] = useState(null); // { user, messages, posts, typing }
+  const [draft, setDraft] = useState("");
+  const [aboutPost, setAboutPost] = useState(null);
+  const [photo, setPhoto] = useState(null); // { file, preview }
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+  const fileInput = useRef(null);
+  const lastTypingPing = useRef(0);
+  const [newChatUser, setNewChatUser] = useState(null);
+
+  // Clicked "Message" on a post or profile: open that chat with a ready-made first message
+  useEffect(() => {
+    if (!pendingChat || pendingChat.user.id !== activeId) return;
+    const { user: other, post } = pendingChat;
+    setNewChatUser(other);
     setAboutPost(post || null);
-    if (post) {
-      setDraft(
-        post.type === "looking"
+    setDraft(
+      post
+        ? post.type === "looking"
           ? `Hi! I have "${post.title}" that you're looking for.`
           : `Hi! Is "${post.title}" still available?`
-      );
-    }
-    onChatOpened();
-  }, [chatWith, onChatOpened]);
+        : ""
+    );
+    onPendingUsed();
+  }, [pendingChat, activeId, onPendingUsed]);
 
-  // Conversation list (refreshes every 4 seconds)
   const loadConvos = useCallback(() => {
     call("/conversations").then(setConvos).catch(() => {});
   }, [call]);
+  usePolling(loadConvos, 5000);
 
-  useEffect(() => {
-    loadConvos();
-    const timer = setInterval(loadConvos, 4000);
-    return () => clearInterval(timer);
-  }, [loadConvos]);
-
-  // Open chat (refreshes every 3 seconds so new messages appear)
-  const activeId = active?.id;
   const loadThread = useCallback(() => {
     if (!activeId) return;
     call(`/messages/${activeId}`)
       .then((data) => {
-        setThread({ messages: data.messages, posts: data.posts });
-        onRead();
+        setThread(data);
+        refreshBadges();
       })
       .catch((err) => setError(err.message));
-  }, [call, activeId, onRead]);
+  }, [call, activeId, refreshBadges]);
 
   useEffect(() => {
-    setThread({ messages: [], posts: {} });
-    loadThread();
-    const timer = setInterval(loadThread, 3000);
-    return () => clearInterval(timer);
-  }, [loadThread]);
+    setThread(null);
+    setError("");
+    setPhoto(null);
+  }, [activeId]);
+  usePolling(loadThread, 3000);
 
   // Scroll to the newest message
-  const messageCount = thread.messages.length;
+  const count = thread?.messages.length || 0;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messageCount, activeId]);
+  }, [count, activeId, thread?.typing]);
+
+  function onDraftChange(e) {
+    setDraft(e.target.value);
+    const now = Date.now();
+    if (activeId && now - lastTypingPing.current > 3000) {
+      lastTypingPing.current = now;
+      call(`/typing/${activeId}`, { method: "POST" }).catch(() => {});
+    }
+  }
+
+  function pickPhoto(e) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Photo must be smaller than 10 MB");
+      return;
+    }
+    setPhoto({ file, preview: URL.createObjectURL(file) });
+  }
 
   async function send(e) {
     e.preventDefault();
-    if (!draft.trim() || !active) return;
+    if ((!draft.trim() && !photo) || !activeId || sending) return;
     setError("");
+    setSending(true);
+    const form = new FormData();
+    form.append("receiver_id", activeId);
+    form.append("text", draft);
+    if (aboutPost) form.append("post_id", aboutPost.id);
+    if (photo) form.append("photo", photo.file);
     try {
-      await call("/messages", {
-        method: "POST",
-        body: { receiver_id: active.id, text: draft, post_id: aboutPost?.id ?? null },
-      });
+      await call("/messages", { method: "POST", form });
       setDraft("");
       setAboutPost(null);
+      setPhoto(null);
+      lastTypingPing.current = 0;
       loadThread();
       loadConvos();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSending(false);
     }
   }
 
+  const activeUser =
+    thread?.user || convos.find((c) => c.user.id === activeId)?.user || (newChatUser?.id === activeId ? newChatUser : null);
+
   // A brand-new chat isn't in the list yet, so show it at the top
   const list =
-    active && !convos.some((c) => c.user.id === active.id)
-      ? [{ user: active, last_message: "New conversation", unread: 0, isNew: true }, ...convos]
+    activeUser && !convos.some((c) => c.user.id === activeUser.id)
+      ? [{ user: activeUser, last_message: "New conversation", unread: 0 }, ...convos]
       : convos;
 
+  const messages = thread?.messages || [];
+  const lastMine = [...messages].reverse().find((m) => m.sender_id === user.id);
+  const lastMessage = messages[messages.length - 1];
+
   return (
-    <div className={`card messenger ${active ? "has-active" : ""}`}>
+    <div className={`card messenger ${activeId ? "has-active" : ""}`}>
       <aside className="convo-list">
         <h2>Chats</h2>
         {list.length === 0 && (
-          <p className="muted convo-empty">
-            No messages yet. Tap “Message” on any post in the feed to start chatting.
-          </p>
+          <p className="muted convo-empty">No messages yet. Tap “Message” on any post or profile to start chatting.</p>
         )}
         {list.map((c) => (
-          <button
-            key={c.user.id}
-            className={`convo ${active?.id === c.user.id ? "active" : ""}`}
-            onClick={() => {
-              setActive(c.user);
-              setAboutPost(null);
-              setDraft("");
-            }}
-          >
-            <Avatar user={c.user} size={46} />
+          <a key={c.user.id} className={`convo ${activeId === c.user.id ? "active" : ""}`} href={`#/messages/${c.user.id}`}>
+            <Avatar user={c.user} size={48} />
             <div className="convo-text">
               <strong>{c.user.name}</strong>
               <span className={c.unread ? "unread-text" : "muted"}>
-                {c.last_from_me ? "You: " : ""}
-                {c.last_message}
+                {c.typing ? (
+                  <em className="typing-text">typing...</em>
+                ) : (
+                  <>
+                    {c.last_from_me ? "You: " : ""}
+                    {c.last_message}
+                  </>
+                )}
               </span>
             </div>
             <div className="convo-side">
               {c.created_at && <span className="muted small">{timeAgo(c.created_at)}</span>}
-              {c.unread > 0 && <span className="dot">{c.unread}</span>}
+              {c.unread > 0 ? (
+                <span className="dot">{c.unread}</span>
+              ) : (
+                c.last_from_me && c.last_seen && <Avatar user={c.user} size={16} />
+              )}
             </div>
-          </button>
+          </a>
         ))}
       </aside>
 
       <section className="chat">
-        {!active ? (
+        {!activeId ? (
           <div className="chat-empty">
             <Icon name="chat" size={48} />
             <h3>Your messages</h3>
@@ -133,44 +175,70 @@ export default function Messages({ call, user, chatWith, onChatOpened, onRead })
         ) : (
           <>
             <header className="chat-head">
-              <button className="icon-btn back-btn" onClick={() => setActive(null)} title="Back">
+              <button className="icon-btn back-btn" onClick={() => navigate("/messages")} title="Back">
                 <Icon name="back" size={20} />
               </button>
-              <Avatar user={active} size={40} />
-              <div>
-                <strong>{active.name}</strong>
-                <span className="muted small">{active.contact}</span>
-              </div>
+              {activeUser && (
+                <>
+                  <a href={`#/profile/${activeUser.id}`}>
+                    <Avatar user={activeUser} size={40} />
+                  </a>
+                  <div>
+                    <UserName user={activeUser} />
+                    <span className="muted small">{thread?.typing ? "typing..." : activeUser.contact}</span>
+                  </div>
+                </>
+              )}
             </header>
 
             <div className="chat-body">
-              {thread.messages.length === 0 && (
-                <p className="muted chat-hint">Say hi! Agree on a price and a meetup spot on campus.</p>
+              {thread && messages.length === 0 && (
+                <p className="muted chat-hint">Say hi! Agree on a price and a safe meetup spot on campus.</p>
               )}
-              {thread.messages.map((m, i) => {
+              {messages.map((m, i) => {
                 const mine = m.sender_id === user.id;
                 const post = m.post_id && thread.posts[m.post_id];
-                const showPost = post && thread.messages[i - 1]?.post_id !== m.post_id;
+                const showPost = post && messages[i - 1]?.post_id !== m.post_id;
+                const prev = messages[i - 1];
+                const showTime = !prev || new Date(m.created_at) - new Date(prev.created_at) > 30 * 60 * 1000;
                 return (
                   <div key={m.id}>
+                    {showTime && <div className="chat-time">{shortDateTime(m.created_at)}</div>}
                     {showPost && (
-                      <div className={`chat-item ${mine ? "mine" : ""}`}>
+                      <a className={`chat-item ${mine ? "mine" : ""}`} href={`#/post/${post.id}`}>
                         {post.image_url && <img src={imageUrl(post.image_url)} alt="" />}
                         <div>
                           <span className="muted small">About</span>
                           <strong>{post.title}</strong>
                           {post.price !== null && <span className="small">{peso(post.price)}</span>}
                         </div>
-                      </div>
+                      </a>
                     )}
                     <div className={`bubble-row ${mine ? "mine" : ""}`}>
-                      <div className="bubble" title={new Date(m.created_at).toLocaleString()}>
-                        {m.text}
+                      <div className={`bubble ${m.image_url && !m.text ? "photo-only" : ""}`} title={shortDateTime(m.created_at)}>
+                        {m.image_url && (
+                          <a href={imageUrl(m.image_url)} target="_blank" rel="noreferrer">
+                            <img className="bubble-photo" src={imageUrl(m.image_url)} alt="Sent photo" />
+                          </a>
+                        )}
+                        {m.text && <span>{m.text}</span>}
                       </div>
                     </div>
+                    {m === lastMine && m === lastMessage && (
+                      <div className="seen">{m.is_read ? "Seen" : "Sent"}</div>
+                    )}
                   </div>
                 );
               })}
+              {thread?.typing && (
+                <div className="bubble-row">
+                  <div className="bubble typing-bubble">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                </div>
+              )}
               <div ref={bottomRef} />
             </div>
 
@@ -184,19 +252,30 @@ export default function Messages({ call, user, chatWith, onChatOpened, onRead })
                 </button>
               </div>
             )}
+            {photo && (
+              <div className="photo-preview-bar">
+                <img src={photo.preview} alt="" />
+                <span className="muted small">Photo ready to send</span>
+                <button className="icon-btn" onClick={() => setPhoto(null)} title="Remove photo">
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+            )}
             {error && <p className="error chat-error">{error}</p>}
-
-            <form className="chat-input" onSubmit={send}>
-              <input
-                placeholder="Type a message..."
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                autoFocus
-              />
-              <button className="icon-btn send" type="submit" disabled={!draft.trim()} title="Send">
-                <Icon name="send" size={20} />
-              </button>
-            </form>
+            {thread?.blocked ? (
+              <p className="muted center chat-blocked">This account is suspended. You can't reply.</p>
+            ) : (
+              <form className="chat-input" onSubmit={send}>
+                <button type="button" className="icon-btn" onClick={() => fileInput.current.click()} title="Send a photo">
+                  <Icon name="image" size={22} />
+                </button>
+                <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" onChange={pickPhoto} hidden />
+                <input placeholder="Type a message..." value={draft} onChange={onDraftChange} />
+                <button className="icon-btn send" type="submit" disabled={(!draft.trim() && !photo) || sending} title="Send">
+                  <Icon name="send" size={20} />
+                </button>
+              </form>
+            )}
           </>
         )}
       </section>

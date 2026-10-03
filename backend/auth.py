@@ -1,13 +1,12 @@
-import os
 from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from config import SECRET_KEY, ADMIN_EMAILS
 from database import SessionLocal, User
 
-# Online, set SECRET_KEY in Render's "Environment" settings
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-to-a-long-random-secret")
 ALGORITHM = "HS256"
 
 security = HTTPBearer()
@@ -34,6 +33,10 @@ def create_token(user_id):
     return jwt.encode({"sub": str(user_id), "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def is_admin(user):
+    return user.email.lower() in ADMIN_EMAILS
+
+
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db=Depends(get_db)):
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
@@ -41,6 +44,14 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     except (jwt.PyJWTError, KeyError, ValueError):
         raise HTTPException(status_code=401, detail="Please log in again")
     user = db.get(User, user_id)
-    if not user:
+    if not user or not user.email_verified:
         raise HTTPException(status_code=401, detail="Please log in again")
+    if user.banned:
+        raise HTTPException(status_code=401, detail="Your account has been suspended")
+    return user
+
+
+def get_admin(user=Depends(get_current_user)):
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
     return user

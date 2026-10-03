@@ -1,0 +1,16 @@
+{
+  "name": "Urios Market",
+  "short_name": "Urios Market",
+  "description": "Buy, sell, and find what you need from fellow Urians.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef3fb",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,34 +1,94 @@
-import { useCallback, useEffect, useState } from "react";
-import { api } from "./api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, CATEGORIES, REACTIONS } from "./api";
+import { AppContext } from "./context";
+import { useRoute, navigate } from "./router";
+import { registerServiceWorker, useInstallPrompt } from "./pwa";
 import AuthPage from "./components/AuthPage";
 import Feed from "./components/Feed";
+import PostPage from "./components/PostPage";
+import ProfilePage from "./components/ProfilePage";
+import FriendsPage from "./components/FriendsPage";
 import Messages from "./components/Messages";
-import CreatePostModal from "./components/CreatePostModal";
+import NotificationsPanel from "./components/NotificationsPanel";
+import AdminPage from "./components/AdminPage";
+import PostEditor from "./components/PostEditor";
 import ProfileModal from "./components/ProfileModal";
+import { PaymentModal } from "./components/Dialogs";
+import TopBar from "./components/TopBar";
+import BottomNav from "./components/BottomNav";
 import ServerWake from "./components/ServerWake";
-import Avatar from "./components/Avatar";
 import Icon from "./components/Icon";
+
+const DEFAULT_CONFIG = {
+  categories: CATEGORIES,
+  reactions: REACTIONS,
+  meetup_spots: [],
+  report_reasons: [],
+  boost_plans: [],
+  max_photos: 4,
+};
+
+function readJSON(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function startingTheme() {
+  const saved = localStorage.getItem("theme");
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem("token"));
-  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("user") || "null"));
-  const [page, setPage] = useState("feed"); // "feed" or "messages"
+  const [user, setUser] = useState(() => readJSON("user"));
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [badges, setBadges] = useState({ messages: 0, notifications: 0, friend_requests: 0 });
   const [search, setSearch] = useState("");
-  const [createType, setCreateType] = useState(null); // null = modal closed
-  const [newPost, setNewPost] = useState(null);
-  const [chatWith, setChatWith] = useState(null); // { user, post } when "Message" is clicked
-  const [unread, setUnread] = useState(0);
-  const [showProfile, setShowProfile] = useState(false);
+  const [editor, setEditor] = useState(null); // { type } to create, { post } to edit
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showVerify, setShowVerify] = useState(false);
+  const [pendingChat, setPendingChat] = useState(null);
+  const [postEvent, setPostEvent] = useState(null); // tells pages a post was created/edited
+  const [toastText, setToastText] = useState("");
+  const [theme, setThemeState] = useState(startingTheme);
+  const toastTimer = useRef(null);
+  const install = useInstallPrompt();
+  const { parts } = useRoute();
+
+  // ---- Theme (light / dark) ----
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0b1220" : "#1e3a8a");
+  }, [theme]);
+
+  const setTheme = useCallback((value) => {
+    localStorage.setItem("theme", value);
+    setThemeState(value);
+  }, []);
+
+  // ---- Phone app (PWA) ----
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
+
+  // ---- Settings from the backend ----
+  useEffect(() => {
+    api("/config").then((c) => setConfig({ ...DEFAULT_CONFIG, ...c })).catch(() => {});
+  }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setToken(null);
     setUser(null);
-    setPage("feed");
+    navigate("/");
   }, []);
 
-  // Every component uses this to talk to the backend.
+  // Every page uses this to talk to the backend.
   // If the login expired, it logs you out automatically.
   const call = useCallback(
     (path, options = {}) =>
@@ -39,6 +99,11 @@ function App() {
     [token, logout]
   );
 
+  const updateUser = useCallback((updated) => {
+    localStorage.setItem("user", JSON.stringify(updated));
+    setUser(updated);
+  }, []);
+
   function handleLogin(data) {
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
@@ -46,137 +111,146 @@ function App() {
     setUser(data.user);
   }
 
-  // Check for new messages every 5 seconds (for the red badge)
-  const refreshUnread = useCallback(() => {
-    if (!token) return;
-    call("/unread-count").then((d) => setUnread(d.count)).catch(() => {});
+  // Keep your own info fresh (e.g. after an admin approves your badge)
+  useEffect(() => {
+    if (token) call("/me").then(updateUser).catch(() => {});
+  }, [token, call, updateUser]);
+
+  // ---- Red badge numbers (checked every 10 seconds while the tab is open) ----
+  const refreshBadges = useCallback(() => {
+    if (!token || document.visibilityState === "hidden") return;
+    call("/badges").then(setBadges).catch(() => {});
   }, [token, call]);
 
   useEffect(() => {
-    refreshUnread();
-    const timer = setInterval(refreshUnread, 5000);
-    return () => clearInterval(timer);
-  }, [refreshUnread]);
+    refreshBadges();
+    const timer = setInterval(refreshBadges, 10000);
+    document.addEventListener("visibilitychange", refreshBadges);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshBadges);
+    };
+  }, [refreshBadges]);
 
-  // Save new profile info (name, contact, picture) everywhere
-  function updateUser(updated) {
-    localStorage.setItem("user", JSON.stringify(updated));
-    setUser(updated);
-  }
+  const toast = useCallback((text) => {
+    setToastText(text);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastText(""), 2800);
+  }, []);
 
-  function openChat(otherUser, post) {
-    setChatWith({ user: otherUser, post });
-    setPage("messages");
-  }
+  const openChat = useCallback((otherUser, post) => {
+    setPendingChat({ user: otherUser, post });
+    navigate(`/messages/${otherUser.id}`);
+  }, []);
+
+  const ctx = useMemo(
+    () => ({
+      user,
+      updateUser,
+      call,
+      config,
+      badges,
+      refreshBadges,
+      toast,
+      openChat,
+      openCreate: (type = "selling") => setEditor({ type }),
+      openEdit: (post) => setEditor({ post }),
+      openProfileEdit: () => setShowProfileEdit(true),
+      openVerify: () => setShowVerify(true),
+      postEvent,
+      theme,
+      setTheme,
+      install,
+      logout,
+      search,
+      setSearch,
+    }),
+    [user, updateUser, call, config, badges, refreshBadges, toast, openChat, postEvent, theme, setTheme, install, logout, search]
+  );
 
   if (!token || !user) {
     return (
       <>
         <ServerWake />
-        <AuthPage onLogin={handleLogin} />
+        <AuthPage onLogin={handleLogin} config={config} />
       </>
     );
   }
 
+  // ---- Pick the page from the address (#/profile/5, #/messages, ...) ----
+  const [page, id] = parts;
+  let content;
+  let showFab = false;
+  if (page === "post" && id) {
+    content = <PostPage key={id} postId={Number(id)} />;
+  } else if (page === "profile" && id) {
+    content = <ProfilePage key={id} userId={Number(id)} />;
+    showFab = Number(id) === user.id;
+  } else if (page === "friends") {
+    content = <FriendsPage />;
+  } else if (page === "messages") {
+    content = (
+      <Messages
+        activeId={id ? Number(id) : null}
+        pendingChat={pendingChat}
+        onPendingUsed={() => setPendingChat(null)}
+      />
+    );
+  } else if (page === "notifications") {
+    content = (
+      <div className="page-narrow">
+        <NotificationsPanel full />
+      </div>
+    );
+  } else if (page === "admin" && user.is_admin) {
+    content = <AdminPage />;
+  } else if (page === "saved") {
+    content = <Feed key="saved" mode="saved" />;
+    showFab = true;
+  } else {
+    content = <Feed key="feed" mode="all" />;
+    showFab = true;
+  }
+
   return (
-    <div className="app">
-      <ServerWake />
-      <nav className="topbar">
-        <div className="topbar-inner">
-          <button className="brand" onClick={() => setPage("feed")}>
-            <span className="brand-mark">CM</span>
-            <span className="brand-text">FSUU Campus Market</span>
+    <AppContext.Provider value={ctx}>
+      <div className="app">
+        <ServerWake />
+        <TopBar page={page || "feed"} />
+
+        <main className={`main ${page === "messages" ? "main-messages" : ""}`}>{content}</main>
+
+        {showFab && (
+          <button className="fab" onClick={() => setEditor({ type: "selling" })} title="Create a post">
+            <Icon name="plus" size={28} />
           </button>
+        )}
 
-          <label className="search">
-            <Icon name="search" size={18} />
-            <input
-              placeholder="Search the market"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage("feed");
-              }}
-            />
-          </label>
+        <BottomNav page={page || "feed"} />
 
-          <div className="nav-tabs">
-            <button
-              className={`nav-tab ${page === "feed" ? "active" : ""}`}
-              onClick={() => setPage("feed")}
-              title="News Feed"
-            >
-              <Icon name="home" size={22} />
-              <span className="nav-label">Feed</span>
-            </button>
-            <button
-              className={`nav-tab ${page === "messages" ? "active" : ""}`}
-              onClick={() => setPage("messages")}
-              title="Messages"
-            >
-              <Icon name="chat" size={22} />
-              <span className="nav-label">Messages</span>
-              {unread > 0 && <span className="badge">{unread > 9 ? "9+" : unread}</span>}
-            </button>
-          </div>
-
-          <div className="nav-user">
-            <button className="nav-profile" onClick={() => setShowProfile(true)} title="Your profile">
-              <Avatar user={user} size={34} />
-              <span className="nav-name">{user.name.split(" ")[0]}</span>
-            </button>
-            <button className="icon-btn" onClick={logout} title="Log out">
-              <Icon name="logout" size={20} />
-            </button>
-          </div>
-        </div>
-      </nav>
-
-      <main className="main">
-        {page === "feed" ? (
-          <Feed
-            call={call}
-            user={user}
-            search={search}
-            newPost={newPost}
-            onCreate={(type) => setCreateType(type)}
-            onOpenProfile={() => setShowProfile(true)}
-            onMessage={openChat}
-          />
-        ) : (
-          <Messages
-            call={call}
-            user={user}
-            chatWith={chatWith}
-            onChatOpened={() => setChatWith(null)}
-            onRead={refreshUnread}
+        {editor && (
+          <PostEditor
+            post={editor.post}
+            defaultType={editor.type}
+            onClose={() => setEditor(null)}
+            onSaved={(post, isNew) => {
+              setEditor(null);
+              setPostEvent({ post, isNew, at: Date.now() });
+              toast(isNew ? "Posted!" : "Post updated");
+            }}
           />
         )}
-      </main>
 
-      {page === "feed" && (
-        <button className="fab" onClick={() => setCreateType("selling")} title="Create a post">
-          <Icon name="plus" size={28} />
-        </button>
-      )}
+        {showProfileEdit && <ProfileModal onClose={() => setShowProfileEdit(false)} />}
+        {showVerify && <PaymentModal kind="verified" onClose={() => setShowVerify(false)} />}
 
-      {showProfile && (
-        <ProfileModal call={call} user={user} onClose={() => setShowProfile(false)} onUpdated={updateUser} />
-      )}
-
-      {createType && (
-        <CreatePostModal
-          call={call}
-          user={user}
-          defaultType={createType}
-          onClose={() => setCreateType(null)}
-          onCreated={(post) => {
-            setNewPost(post);
-            setCreateType(null);
-          }}
-        />
-      )}
-    </div>
+        {toastText && (
+          <div className="toast" role="status">
+            {toastText}
+          </div>
+        )}
+      </div>
+    </AppContext.Provider>
   );
 }
 
