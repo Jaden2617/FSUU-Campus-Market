@@ -162,7 +162,22 @@ export default function Feed({ mode = "all" }) {
           </div>
         )}
 
-        {!saved && !user.avatar_url && (
+        {!saved && !user.contact && (
+          <div className="card nudge">
+            <span className="nudge-icon">
+              <Icon name="phone" size={22} />
+            </span>
+            <div>
+              <strong>Add your contact</strong>
+              <p className="muted small">Your FB name or phone, so buyers can reach you outside the app.</p>
+            </div>
+            <button className="btn-secondary" onClick={openProfileEdit}>
+              Add contact
+            </button>
+          </div>
+        )}
+
+        {!saved && user.contact && !user.avatar_url && (
           <div className="card nudge">
             <span className="nudge-icon">
               <Icon name="camera" size={22} />

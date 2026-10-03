@@ -49,7 +49,7 @@ function App() {
   const [badges, setBadges] = useState({ messages: 0, notifications: 0, friend_requests: 0 });
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState(null); // { type } to create, { post } to edit
-  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showProfileEdit, setShowProfileEdit] = useState(false); // true, or "welcome" for new Google users
   const [showVerify, setShowVerify] = useState(false);
   const [pendingChat, setPendingChat] = useState(null);
   const [postEvent, setPostEvent] = useState(null); // tells pages a post was created/edited
@@ -109,6 +109,8 @@ function App() {
     localStorage.setItem("user", JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
+    // New Google accounts don't have a contact yet: ask for it right away
+    if (!data.user.contact) setShowProfileEdit("welcome");
   }
 
   // Keep your own info fresh (e.g. after an admin approves your badge)
@@ -241,7 +243,7 @@ function App() {
           />
         )}
 
-        {showProfileEdit && <ProfileModal onClose={() => setShowProfileEdit(false)} />}
+        {showProfileEdit && <ProfileModal welcome={showProfileEdit === "welcome"} onClose={() => setShowProfileEdit(false)} />}
         {showVerify && <PaymentModal kind="verified" onClose={() => setShowVerify(false)} />}
 
         {toastText && (

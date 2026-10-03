@@ -77,7 +77,9 @@ export default function PostEditor({ post, defaultType = "selling", onClose, onS
         <Avatar user={user} size={40} />
         <div>
           <strong>{user.name}</strong>
-          <span className="muted small">Buyers can message you here or at {user.contact}</span>
+          <span className="muted small">
+            Buyers can message you here{user.contact ? ` or at ${user.contact}` : ""}
+          </span>
         </div>
       </div>
 

@@ -4,7 +4,7 @@ import Avatar from "./Avatar";
 import Icon from "./Icon";
 import Modal from "./Modal";
 
-export default function ProfileModal({ onClose }) {
+export default function ProfileModal({ onClose, welcome = false }) {
   const { call, user, updateUser } = useApp();
   const [form, setForm] = useState({ name: user.name, contact: user.contact, bio: user.bio || "" });
   const [error, setError] = useState("");
@@ -45,7 +45,12 @@ export default function ProfileModal({ onClose }) {
   }
 
   return (
-    <Modal title="Edit profile" onClose={onClose} as="form" onSubmit={saveProfile}>
+    <Modal title={welcome ? `Welcome, ${user.name.split(" ")[0]}! 👋` : "Edit profile"} onClose={onClose} as="form" onSubmit={saveProfile}>
+      {welcome && (
+        <p className="dialog-text">
+          Add your <strong>contact</strong> (FB name or phone) so buyers and sellers can reach you. You can also change your photo and add a short bio.
+        </p>
+      )}
       <div className="profile-photo">
         <button
           type="button"

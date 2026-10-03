@@ -502,6 +502,47 @@ img.avatar {
   margin: 0 0 6px;
 }
 
+/* "Continue with Google" */
+.google-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.google-btn {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 400px;
+}
+
+.google-btn.busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.google-box p {
+  margin: 0;
+}
+
+.or-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.or-line::before,
+.or-line::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 .code-input {
   font-size: 30px;
   font-weight: 800;

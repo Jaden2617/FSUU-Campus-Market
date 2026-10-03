@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import GoogleButton from "./GoogleButton";
 
 const emptyForm = { name: "", email: "", contact: "", password: "" };
 
@@ -109,8 +110,16 @@ export default function AuthPage({ onLogin, config }) {
           <>
             <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2>
             <p className="muted">
-              {mode === "login" ? "Log in with your FSUU email." : `Only FSUU emails (${school}) can register.`}
+              {mode === "login" ? "Log in with your FSUU account." : `Only FSUU accounts (${school}) can register.`}
             </p>
+
+            <GoogleButton
+              clientId={config?.google_client_id}
+              schoolEmail={school}
+              mode={mode}
+              onLogin={onLogin}
+              onError={setError}
+            />
 
             {mode === "register" && (
               <>
