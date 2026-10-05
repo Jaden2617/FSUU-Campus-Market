@@ -4,6 +4,7 @@ import { timeAgo } from "../api";
 import Avatar, { UserName } from "./Avatar";
 import Icon from "./Icon";
 import { ConfirmDialog } from "./Dialogs";
+import EmojiPicker, { insertEmoji } from "./EmojiPicker";
 
 // How many replies to show before "View more replies"
 const SHOWN_REPLIES = 2;
@@ -21,6 +22,8 @@ export default function Comments({ post, onCountChange }) {
   const [deleting, setDeleting] = useState(null); // comment waiting for "Delete?" confirm
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const commentInput = useRef(null);
+  const replyInput = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +177,7 @@ export default function Comments({ post, onCountChange }) {
                       </span>
                       <div className="reply-row">
                         <input
+                          ref={replyInput}
                           autoFocus
                           placeholder="Write a reply..."
                           value={replyText}
@@ -181,7 +185,8 @@ export default function Comments({ post, onCountChange }) {
                           onKeyDown={(e) => e.key === "Escape" && setReplyTo(null)}
                           maxLength={1000}
                         />
-                        <button className="icon-btn send" type="submit" title="Send reply" disabled={!replyText.trim() || sending}>
+                        <EmojiPicker side="right" size={19} onPick={(emoji) => setReplyText((t) => insertEmoji(replyInput, t, emoji))} />
+                        <button className="icon-btn send" type="submit" data-sound="send" title="Send reply" disabled={!replyText.trim() || sending}>
                           <Icon name="send" size={17} />
                         </button>
                       </div>
@@ -199,12 +204,14 @@ export default function Comments({ post, onCountChange }) {
       <form className="comment-form" onSubmit={addComment}>
         <Avatar user={user} size={32} />
         <input
+          ref={commentInput}
           placeholder={post.type === "looking" ? "Have this? Let them know..." : "Ask if it's still available..."}
           value={text}
           onChange={(e) => setText(e.target.value)}
           maxLength={1000}
         />
-        <button className="icon-btn send" type="submit" title="Send" disabled={!text.trim() || sending}>
+        <EmojiPicker side="right" size={20} onPick={(emoji) => setText((t) => insertEmoji(commentInput, t, emoji))} />
+        <button className="icon-btn send" type="submit" data-sound="send" title="Send" disabled={!text.trim() || sending}>
           <Icon name="send" size={18} />
         </button>
       </form>
@@ -390,7 +397,7 @@ function CommentReactButton({ myReaction, onReact }) {
       {open && (
         <span className="react-picker small">
           {config.reactions.map((emoji) => (
-            <button key={emoji} type="button" onClick={() => choose(emoji)} title={labels[emoji] || "React"}>
+            <button key={emoji} type="button" data-sound="pop" onClick={() => choose(emoji)} title={labels[emoji] || "React"}>
               {emoji}
             </button>
           ))}
@@ -399,6 +406,7 @@ function CommentReactButton({ myReaction, onReact }) {
       <button
         type="button"
         className={`comment-action ${myReaction ? "reacted" : ""} ${myReaction === "❤️" ? "love" : ""}`}
+        data-sound="pop"
         onClick={() => {
           if (longPressed.current) {
             longPressed.current = false;

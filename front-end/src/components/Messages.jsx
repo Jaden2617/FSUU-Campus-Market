@@ -4,6 +4,8 @@ import { navigate } from "../router";
 import { imageUrl, peso, shortDateTime, timeAgo } from "../api";
 import Avatar, { UserName } from "./Avatar";
 import Icon from "./Icon";
+import EmojiPicker, { insertEmoji, isOnlyEmoji } from "./EmojiPicker";
+import { playSound } from "../sounds";
 
 // Runs a function every few seconds, but only while the tab is visible
 function usePolling(fn, ms) {
@@ -25,6 +27,7 @@ export default function Messages({ activeId, pendingChat, onPendingUsed }) {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef(null);
   const fileInput = useRef(null);
+  const textInput = useRef(null);
   const lastTypingPing = useRef(0);
   const [newChatUser, setNewChatUser] = useState(null);
 
@@ -49,10 +52,18 @@ export default function Messages({ activeId, pendingChat, onPendingUsed }) {
   }, [call]);
   usePolling(loadConvos, 5000);
 
+  // Remembers the newest message from the other person, to play a sound when a new one comes in
+  const lastTheirs = useRef({ chat: null, id: null });
+
   const loadThread = useCallback(() => {
     if (!activeId) return;
     call(`/messages/${activeId}`)
       .then((data) => {
+        const theirs = data.messages.filter((m) => m.sender_id === activeId);
+        const newest = theirs.length ? theirs[theirs.length - 1].id : 0;
+        const seen = lastTheirs.current;
+        if (seen.chat === activeId && seen.id !== null && newest > seen.id) playSound("receive");
+        lastTheirs.current = { chat: activeId, id: newest };
         setThread(data);
         refreshBadges();
       })
@@ -92,21 +103,24 @@ export default function Messages({ activeId, pendingChat, onPendingUsed }) {
     setPhoto({ file, preview: URL.createObjectURL(file) });
   }
 
-  async function send(e) {
-    e.preventDefault();
-    if ((!draft.trim() && !photo) || !activeId || sending) return;
+  // quick = the 👍 button (sends a like without touching what you typed)
+  async function send(e, quick = null) {
+    e?.preventDefault();
+    if ((!quick && !draft.trim() && !photo) || !activeId || sending) return;
     setError("");
     setSending(true);
     const form = new FormData();
     form.append("receiver_id", activeId);
-    form.append("text", draft);
+    form.append("text", quick || draft);
     if (aboutPost) form.append("post_id", aboutPost.id);
     if (photo) form.append("photo", photo.file);
     try {
       await call("/messages", { method: "POST", form });
-      setDraft("");
+      if (!quick) {
+        setDraft("");
+        setPhoto(null);
+      }
       setAboutPost(null);
-      setPhoto(null);
       lastTypingPing.current = 0;
       loadThread();
       loadConvos();
@@ -215,7 +229,10 @@ export default function Messages({ activeId, pendingChat, onPendingUsed }) {
                       </a>
                     )}
                     <div className={`bubble-row ${mine ? "mine" : ""}`}>
-                      <div className={`bubble ${m.image_url && !m.text ? "photo-only" : ""}`} title={shortDateTime(m.created_at)}>
+                      <div
+                        className={`bubble ${m.image_url && !m.text ? "photo-only" : ""} ${!m.image_url && isOnlyEmoji(m.text) ? "emoji-only" : ""}`}
+                        title={shortDateTime(m.created_at)}
+                      >
                         {m.image_url && (
                           <a href={imageUrl(m.image_url)} target="_blank" rel="noreferrer">
                             <img className="bubble-photo" src={imageUrl(m.image_url)} alt="Sent photo" />
@@ -270,10 +287,22 @@ export default function Messages({ activeId, pendingChat, onPendingUsed }) {
                   <Icon name="image" size={22} />
                 </button>
                 <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" onChange={pickPhoto} hidden />
-                <input placeholder="Type a message..." value={draft} onChange={onDraftChange} />
-                <button className="icon-btn send" type="submit" disabled={(!draft.trim() && !photo) || sending} title="Send">
-                  <Icon name="send" size={20} />
-                </button>
+                <div className="chat-text">
+                  <input ref={textInput} placeholder="Type a message..." value={draft} onChange={onDraftChange} />
+                  <EmojiPicker
+                    side="right"
+                    onPick={(emoji) => onDraftChange({ target: { value: insertEmoji(textInput, draft, emoji) } })}
+                  />
+                </div>
+                {draft.trim() || photo ? (
+                  <button className="icon-btn send" type="submit" data-sound="send" disabled={sending} title="Send">
+                    <Icon name="send" size={20} />
+                  </button>
+                ) : (
+                  <button type="button" className="icon-btn quick-like" data-sound="send" disabled={sending} onClick={() => send(null, "👍")} title="Send a like">
+                    👍
+                  </button>
+                )}
               </form>
             )}
           </>

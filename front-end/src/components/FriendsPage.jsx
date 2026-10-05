@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../context";
+import { timeAgo } from "../api";
 import Avatar, { VerifiedBadge } from "./Avatar";
 import Icon from "./Icon";
 
@@ -8,10 +9,14 @@ export default function FriendsPage() {
   const [data, setData] = useState(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
+  const [tab, setTab] = useState(null); // "requests" | "sent" | "friends" (null = pick for me)
 
   const load = useCallback(() => {
     call("/friends").then(setData).catch(() => setData({ friends: [], incoming: [], outgoing: [] }));
   }, [call]);
+
+  // Open on "Requests" when someone is waiting for your answer, otherwise on your friends
+  const shown = tab || (data?.incoming.length ? "requests" : "friends");
 
   useEffect(() => {
     load();
@@ -85,58 +90,90 @@ export default function FriendsPage() {
 
       {data === null && <div className="card skeleton" />}
 
-      {data?.incoming.length > 0 && (
-        <div className="card list-card">
-          <h3 className="list-title">
-            Friend requests <span className="count">{data.incoming.length}</span>
-          </h3>
-          {data.incoming.map((u) => (
-            <div className="person-row" key={u.id}>
-              <a href={`#/profile/${u.id}`}><Avatar user={u} size={52} /></a>
-              {name(u)}
-              <div className="row-actions">
-                <button className="btn-primary btn-sm" onClick={() => act(u.id, "POST", `You and ${u.name.split(" ")[0]} are now friends`)}>
-                  Confirm
-                </button>
-                <button className="btn-secondary btn-sm" onClick={() => act(u.id, "DELETE")}>Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {data && (
-        <div className="card list-card">
-          <h3 className="list-title">
-            Your friends <span className="count">{data.friends.length}</span>
-          </h3>
-          {data.friends.length === 0 && (
-            <p className="muted empty-line">No friends yet. Search for classmates above, or tap “Add friend” on someone's profile.</p>
-          )}
-          {data.friends.map((u) => (
-            <div className="person-row" key={u.id}>
-              <a href={`#/profile/${u.id}`}><Avatar user={u} size={52} /></a>
-              {name(u)}
-              <button className="icon-btn bordered" onClick={() => openChat(u)} title="Message">
-                <Icon name="chat" size={18} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+        <div className="card friends-card">
+          <div className="tabs friends-tabs" role="tablist">
+            <button role="tab" aria-selected={shown === "requests"} className={`tab ${shown === "requests" ? "active" : ""}`} onClick={() => setTab("requests")}>
+              Requests {data.incoming.length > 0 && <span className="count">{data.incoming.length}</span>}
+            </button>
+            <button role="tab" aria-selected={shown === "sent"} className={`tab ${shown === "sent" ? "active" : ""}`} onClick={() => setTab("sent")}>
+              Sent {data.outgoing.length > 0 && <span className="tab-num">{data.outgoing.length}</span>}
+            </button>
+            <button role="tab" aria-selected={shown === "friends"} className={`tab ${shown === "friends" ? "active" : ""}`} onClick={() => setTab("friends")}>
+              Your friends <span className="tab-num">{data.friends.length}</span>
+            </button>
+          </div>
 
-      {data?.outgoing.length > 0 && (
-        <div className="card list-card">
-          <h3 className="list-title">Requests you sent</h3>
-          {data.outgoing.map((u) => (
-            <div className="person-row" key={u.id}>
-              <a href={`#/profile/${u.id}`}><Avatar user={u} size={44} /></a>
-              {name(u)}
-              <button className="btn-secondary btn-sm" onClick={() => act(u.id, "DELETE")}>Cancel</button>
-            </div>
-          ))}
+          <div className="list-card">
+            {shown === "requests" && (
+              <>
+                <p className="muted small tab-hint">People who want to be your friend.</p>
+                {data.incoming.length === 0 && <EmptyLine icon="userPlus" text="No friend requests right now." />}
+                {data.incoming.map((u) => (
+                  <div className="person-row" key={u.id}>
+                    <a href={`#/profile/${u.id}`}><Avatar user={u} size={52} /></a>
+                    <div className="person-info">
+                      {name(u)}
+                      {u.requested_at && <span className="muted small">Sent you a request · {timeAgo(u.requested_at)}</span>}
+                    </div>
+                    <div className="row-actions">
+                      <button className="btn-primary btn-sm" onClick={() => act(u.id, "POST", `You and ${u.name.split(" ")[0]} are now friends`)}>
+                        Confirm
+                      </button>
+                      <button className="btn-secondary btn-sm" onClick={() => act(u.id, "DELETE", "Request removed")}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {shown === "sent" && (
+              <>
+                <p className="muted small tab-hint">Requests you sent that haven't been answered yet.</p>
+                {data.outgoing.length === 0 && (
+                  <EmptyLine icon="search" text="You haven't sent any requests. Search for classmates above, or tap “Add friend” on someone's profile." />
+                )}
+                {data.outgoing.map((u) => (
+                  <div className="person-row" key={u.id}>
+                    <a href={`#/profile/${u.id}`}><Avatar user={u} size={52} /></a>
+                    <div className="person-info">
+                      {name(u)}
+                      {u.requested_at && <span className="muted small">Request sent · {timeAgo(u.requested_at)}</span>}
+                    </div>
+                    <button className="btn-secondary btn-sm" onClick={() => act(u.id, "DELETE", "Request cancelled")}>Cancel request</button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {shown === "friends" && (
+              <>
+                {data.friends.length === 0 && (
+                  <EmptyLine icon="users" text="No friends yet. Search for classmates above, or tap “Add friend” on someone's profile." />
+                )}
+                {data.friends.map((u) => (
+                  <div className="person-row" key={u.id}>
+                    <a href={`#/profile/${u.id}`}><Avatar user={u} size={52} /></a>
+                    {name(u)}
+                    <button className="icon-btn bordered" onClick={() => openChat(u)} title="Message">
+                      <Icon name="chat" size={18} />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function EmptyLine({ icon, text }) {
+  return (
+    <div className="friends-empty">
+      <Icon name={icon} size={30} />
+      <p className="muted">{text}</p>
     </div>
   );
 }

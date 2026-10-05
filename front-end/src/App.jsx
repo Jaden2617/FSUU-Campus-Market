@@ -3,6 +3,7 @@ import { api, CATEGORIES, REACTIONS } from "./api";
 import { AppContext } from "./context";
 import { useRoute, navigate } from "./router";
 import { registerServiceWorker, useInstallPrompt } from "./pwa";
+import { playSound, setSoundsOn, soundsOn, startClickSounds } from "./sounds";
 import AuthPage from "./components/AuthPage";
 import Feed from "./components/Feed";
 import PostPage from "./components/PostPage";
@@ -55,6 +56,7 @@ function App() {
   const [postEvent, setPostEvent] = useState(null); // tells pages a post was created/edited
   const [toastText, setToastText] = useState("");
   const [theme, setThemeState] = useState(startingTheme);
+  const [sounds, setSoundsState] = useState(soundsOn);
   const toastTimer = useRef(null);
   const install = useInstallPrompt();
   const { parts } = useRoute();
@@ -68,6 +70,15 @@ function App() {
   const setTheme = useCallback((value) => {
     localStorage.setItem("theme", value);
     setThemeState(value);
+  }, []);
+
+  // ---- Sound effects ----
+  useEffect(() => startClickSounds(), []);
+
+  const setSounds = useCallback((on) => {
+    setSoundsOn(on);
+    setSoundsState(on);
+    if (on) playSound("pop");
   }, []);
 
   // ---- Phone app (PWA) ----
@@ -119,10 +130,30 @@ function App() {
   }, [token, call, updateUser]);
 
   // ---- Red badge numbers (checked every 10 seconds while the tab is open) ----
+  const lastBadges = useRef(null);
   const refreshBadges = useCallback(() => {
     if (!token || document.visibilityState === "hidden") return;
-    call("/badges").then(setBadges).catch(() => {});
+    call("/badges")
+      .then((next) => {
+        // Chime when something new arrives (not on the first check after opening the app)
+        const before = lastBadges.current;
+        if (before) {
+          const onChats = window.location.hash.startsWith("#/messages");
+          const more =
+            next.notifications > before.notifications ||
+            next.friend_requests > before.friend_requests ||
+            (!onChats && next.messages > before.messages); // the open chat plays its own sound
+          if (more) playSound("notify");
+        }
+        lastBadges.current = next;
+        setBadges(next);
+      })
+      .catch(() => {});
   }, [token, call]);
+
+  useEffect(() => {
+    lastBadges.current = null; // new login: don't chime for old notifications
+  }, [token]);
 
   useEffect(() => {
     refreshBadges();
@@ -162,12 +193,14 @@ function App() {
       postEvent,
       theme,
       setTheme,
+      sounds,
+      setSounds,
       install,
       logout,
       search,
       setSearch,
     }),
-    [user, updateUser, call, config, badges, refreshBadges, toast, openChat, postEvent, theme, setTheme, install, logout, search]
+    [user, updateUser, call, config, badges, refreshBadges, toast, openChat, postEvent, theme, setTheme, sounds, setSounds, install, logout, search]
   );
 
   if (!token || !user) {

@@ -107,7 +107,7 @@ export default function TopBar({ page }) {
 }
 
 function UserMenu({ close }) {
-  const { user, theme, setTheme, install, logout, openProfileEdit, openVerify } = useApp();
+  const { user, theme, setTheme, sounds, setSounds, install, logout, openProfileEdit, openVerify } = useApp();
   const [showIosHelp, setShowIosHelp] = useState(false);
 
   function go(path) {
@@ -144,6 +144,11 @@ function UserMenu({ close }) {
       <button className="menu-item" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
         <Icon name={theme === "dark" ? "sun" : "moon"} size={19} />
         {theme === "dark" ? "Light mode" : "Dark mode"}
+      </button>
+      <button className="menu-item" data-sound="none" onClick={() => setSounds(!sounds)}>
+        <Icon name={sounds ? "volume" : "volumeOff"} size={19} />
+        Sound effects
+        <span className={`switch ${sounds ? "on" : ""}`} aria-hidden="true" />
       </button>
       {!install.installed && (install.canPrompt || install.ios) && (
         <button

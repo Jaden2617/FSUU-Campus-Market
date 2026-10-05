@@ -109,12 +109,17 @@ def my_friends(db=Depends(get_db), me=Depends(get_current_user)):
         Friendship.status == "pending",
         or_(Friendship.requester_id == me.id, Friendship.addressee_id == me.id),
     ).order_by(Friendship.id.desc()).all()
-    incoming_ids = [f.requester_id for f in pending if f.addressee_id == me.id]
-    outgoing_ids = [f.addressee_id for f in pending if f.requester_id == me.id]
+    incoming = {f.requester_id: f.created_at for f in pending if f.addressee_id == me.id}
+    outgoing = {f.addressee_id: f.created_at for f in pending if f.requester_id == me.id}
+
+    def with_time(times):
+        people = [{**public_user(u), "requested_at": iso_time(times[u.id])} for u in _active_users(db, list(times))]
+        return sorted(people, key=lambda p: p["requested_at"] or "", reverse=True)  # newest first
+
     return {
         "friends": [public_user(u) for u in _active_users(db, _friend_ids(db, me.id))],
-        "incoming": [public_user(u) for u in _active_users(db, incoming_ids)],
-        "outgoing": [public_user(u) for u in _active_users(db, outgoing_ids)],
+        "incoming": with_time(incoming),
+        "outgoing": with_time(outgoing),
     }
 
 
@@ -153,6 +158,9 @@ def get_notifications(db=Depends(get_db), me=Depends(get_current_user)):
         db.query(Notification).filter(Notification.user_id == me.id)
         .order_by(Notification.id.desc()).limit(50).all()
     )
+    # People whose friend request is still waiting for my answer (for Confirm / Delete buttons)
+    waiting = {f.requester_id for f in db.query(Friendship).filter(
+        Friendship.addressee_id == me.id, Friendship.status == "pending")}
     return [{
         "id": n.id,
         "type": n.type,
@@ -161,6 +169,7 @@ def get_notifications(db=Depends(get_db), me=Depends(get_current_user)):
         "is_read": bool(n.is_read),
         "created_at": iso_time(n.created_at),
         "actor": public_user(n.actor),
+        "request_pending": n.type == "friend_request" and n.actor_id in waiting,
     } for n in items]
 
 

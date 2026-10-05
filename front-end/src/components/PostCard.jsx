@@ -252,7 +252,7 @@ export default function PostCard({ post, onChange, onDelete, startWithComments =
           {showPicker && (
             <div className="react-picker">
               {config.reactions.map((emoji) => (
-                <button key={emoji} onClick={() => react(emoji)} title="React">
+                <button key={emoji} onClick={() => react(emoji)} title="React" data-sound="pop">
                   {emoji}
                 </button>
               ))}
@@ -260,6 +260,7 @@ export default function PostCard({ post, onChange, onDelete, startWithComments =
           )}
           <button
             className={`action ${post.my_reaction ? "reacted" : ""}`}
+            data-sound="pop"
             onClick={handleLikeClick}
             onPointerEnter={(e) => e.pointerType === "mouse" && setShowPicker(true)}
             onPointerDown={startPress}

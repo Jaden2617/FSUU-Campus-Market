@@ -18,7 +18,7 @@ const TYPE_ICONS = {
 };
 
 export default function NotificationsPanel({ full = false, onNavigate }) {
-  const { call, user, refreshBadges } = useApp();
+  const { call, user, refreshBadges, toast } = useApp();
   const [items, setItems] = useState(null);
 
   useEffect(() => {
@@ -37,6 +37,25 @@ export default function NotificationsPanel({ full = false, onNavigate }) {
     else if (n.actor) navigate(`/profile/${n.actor.id}`);
     else navigate(`/profile/${user.id}`);
     onNavigate?.();
+  }
+
+  // Confirm / Delete a friend request without leaving the list
+  async function answerRequest(n, accept) {
+    try {
+      await call(`/friends/${n.actor.id}`, { method: accept ? "POST" : "DELETE" });
+      if (!n.is_read) call(`/notifications/${n.id}/read`, { method: "POST" }).catch(() => {});
+      setItems((list) =>
+        list.map((x) =>
+          x.type === "friend_request" && x.actor?.id === n.actor.id
+            ? { ...x, is_read: x.id === n.id ? true : x.is_read, request_pending: false, answer: accept ? "You're now friends" : "Request removed" }
+            : x
+        )
+      );
+      refreshBadges();
+      if (accept) toast(`You and ${n.actor.name.split(" ")[0]} are now friends`);
+    } catch (err) {
+      toast(err.message);
+    }
   }
 
   async function readAll() {
@@ -68,7 +87,14 @@ export default function NotificationsPanel({ full = false, onNavigate }) {
 
       <div className="notif-list">
         {items?.map((n) => (
-          <button key={n.id} className={`notif ${n.is_read ? "" : "unread"}`} onClick={() => open(n)}>
+          <div
+            key={n.id}
+            role="button"
+            tabIndex={0}
+            className={`notif ${n.is_read ? "" : "unread"}`}
+            onClick={() => open(n)}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), open(n))}
+          >
             <span className="notif-avatar">
               {n.actor ? <Avatar user={n.actor} size={46} /> : <span className="notif-system"><Icon name="shield" size={22} /></span>}
               <span className={`notif-type t-${n.type}`}>
@@ -78,9 +104,20 @@ export default function NotificationsPanel({ full = false, onNavigate }) {
             <span className="notif-text">
               <span>{n.text}</span>
               <span className="notif-time">{timeAgo(n.created_at)}</span>
+              {n.request_pending && n.actor && (
+                <span className="notif-actions" onClick={(e) => e.stopPropagation()}>
+                  <button className="btn-primary btn-sm" onClick={() => answerRequest(n, true)}>
+                    Confirm
+                  </button>
+                  <button className="btn-secondary btn-sm" onClick={() => answerRequest(n, false)}>
+                    Delete
+                  </button>
+                </span>
+              )}
+              {n.answer && <span className="notif-answer">{n.answer}</span>}
             </span>
             {!n.is_read && <span className="unread-dot" />}
-          </button>
+          </div>
         ))}
       </div>
     </div>

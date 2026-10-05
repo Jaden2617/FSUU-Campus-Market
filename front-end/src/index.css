@@ -3462,3 +3462,290 @@ img.avatar {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   }
 }
+
+/* ============ Emoji picker (chats and comments) ============ */
+.emoji-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.emoji-toggle {
+  color: var(--muted);
+}
+
+.emoji-toggle:hover,
+.emoji-toggle.active {
+  color: var(--primary);
+}
+
+.emoji-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  animation: pop 0.15s ease-out;
+}
+
+.emoji-panel.side-left {
+  left: 0;
+}
+
+.emoji-panel.side-right {
+  right: 0;
+}
+
+.emoji-title {
+  padding: 10px 12px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  height: 216px;
+  padding: 2px 8px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.emoji-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  touch-action: manipulation;
+  transition: transform 0.12s, background 0.12s;
+}
+
+.emoji-cell:hover {
+  background: var(--hover);
+  transform: scale(1.15);
+}
+
+.emoji-tabs {
+  display: flex;
+  justify-content: space-around;
+  padding: 4px 6px;
+  border-top: 1px solid var(--line);
+}
+
+.emoji-tabs button {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 18px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.emoji-tabs button:hover {
+  opacity: 0.9;
+}
+
+.emoji-tabs button.active {
+  opacity: 1;
+  border-bottom-color: var(--primary);
+}
+
+/* Chat box: emoji button sits inside the text box, on the right */
+.chat-text {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+}
+
+.chat-text input {
+  padding-right: 46px;
+}
+
+.chat-text .emoji-wrap {
+  position: absolute;
+  right: 4px;
+}
+
+.chat-text .emoji-toggle {
+  width: 36px;
+  height: 36px;
+}
+
+.quick-like {
+  font-size: 24px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+
+.quick-like:hover:not(:disabled) {
+  transform: scale(1.15);
+}
+
+/* A message that's only 1–3 emojis shows big, without a bubble */
+.bubble.emoji-only {
+  padding: 2px 4px;
+  font-size: 40px;
+  line-height: 1.15;
+  background: none !important;
+  color: inherit;
+}
+
+.comment-form .emoji-toggle,
+.reply-row .emoji-toggle {
+  width: 34px;
+  height: 34px;
+}
+
+/* ============ Friends page tabs (Requests / Sent / Your friends) ============ */
+.friends-card {
+  overflow: hidden;
+}
+
+.friends-tabs {
+  border-top: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.friends-tabs .count {
+  margin-left: 0;
+}
+
+.tab-num {
+  min-width: 20px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--hover);
+  border-radius: 999px;
+}
+
+.tab.active .tab-num {
+  color: var(--primary-ink);
+  background: var(--primary-soft);
+}
+
+.tab-hint {
+  margin: 0 0 4px;
+}
+
+.person-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.person-info .person-name {
+  flex: none;
+}
+
+.friends-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.friends-empty p {
+  max-width: 340px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .friends-tabs {
+    padding: 0 8px;
+  }
+  .friends-tabs .tab {
+    padding: 12px 10px 10px;
+  }
+  .person-row .row-actions {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+/* Friend request in notifications: Confirm / Delete right there */
+.notif {
+  width: 100%;
+  cursor: pointer;
+}
+
+.notif:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.notif-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.notif-actions .btn-sm {
+  padding: 6px 16px;
+}
+
+.notif-answer {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* On/off switch (Sound effects in the menu) */
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  margin-left: auto;
+  background: var(--line);
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s;
+}
+
+.switch.on {
+  background: var(--primary);
+}
+
+.switch.on::after {
+  transform: translateX(16px);
+}
