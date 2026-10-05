@@ -516,6 +516,14 @@ img.avatar {
   justify-content: center;
   width: 100%;
   max-width: 400px;
+  /* Google's button lives in an iframe. If its color scheme differs from
+     the page (dark mode), the browser paints a white box behind it. */
+  color-scheme: light;
+}
+
+.google-btn iframe {
+  color-scheme: light;
+  background: transparent;
 }
 
 .google-btn.busy {
@@ -1367,17 +1375,41 @@ img.avatar {
 .comments {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 12px 16px 16px;
   border-top: 1px solid var(--line);
+}
+
+.comment-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .comment {
   display: flex;
   gap: 8px;
+  min-width: 0;
+}
+
+.comment-avatar {
+  flex-shrink: 0;
+}
+
+.comment-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.comment-bubble-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
 }
 
 .comment-bubble {
+  display: inline-block;
+  max-width: 100%;
   padding: 8px 12px;
   background: var(--hover);
   border-radius: 16px;
@@ -1393,10 +1425,173 @@ img.avatar {
   overflow-wrap: anywhere;
 }
 
+/* Little reaction count on the corner of a comment */
+.comment-reactions {
+  position: absolute;
+  right: -6px;
+  bottom: -10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--card);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+
+.comment-reactions-emoji {
+  font-size: 13px;
+  letter-spacing: -2px;
+  padding-right: 2px;
+}
+
 .comment-meta {
   display: flex;
-  gap: 12px;
-  margin-left: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 4px 0 0 12px;
+  font-size: 12px;
+}
+
+.comment-action {
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.comment-action:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.comment-action.reacted {
+  color: var(--primary-ink);
+}
+
+.comment-action.reacted.love {
+  color: var(--red);
+}
+
+.edited-tag {
+  font-size: 12px;
+}
+
+.comment-react {
+  position: relative;
+}
+
+.react-picker.small {
+  bottom: calc(100% + 6px);
+  left: -8px;
+  padding: 4px;
+}
+
+.react-picker.small button {
+  width: 38px;
+  height: 38px;
+  font-size: 22px;
+}
+
+/* Replies sit under the comment, a bit to the right */
+.replies {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 40px;
+}
+
+.comment.is-reply .comment-bubble {
+  padding: 6px 11px;
+}
+
+.more-replies {
+  align-self: flex-start;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.reply-input {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.reply-form {
+  align-items: flex-start;
+}
+
+.replying-to {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.reply-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reply-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+}
+
+/* Editing a comment */
+.comment-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment-edit textarea {
+  width: 100%;
+  min-height: 0;
+  padding: 8px 12px;
+  border-radius: 14px;
+  resize: vertical;
+}
+
+.comment-edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.comment-edit-actions .muted {
+  margin-right: auto;
+}
+
+.btn-small.ghost {
+  color: var(--text);
+  background: var(--hover);
+}
+
+@media (max-width: 600px) {
+  .replies {
+    margin-left: 34px;
+  }
+  .comment-edit-actions .muted {
+    display: none;
+  }
 }
 
 .comment-form {

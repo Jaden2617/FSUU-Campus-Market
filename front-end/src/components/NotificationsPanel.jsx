@@ -7,6 +7,7 @@ import Icon from "./Icon";
 
 const TYPE_ICONS = {
   comment: "comment",
+  reply: "comment",
   reaction: "star",
   friend_request: "userPlus",
   friend_accept: "userCheck",
@@ -22,7 +23,9 @@ export default function NotificationsPanel({ full = false, onNavigate }) {
 
   useEffect(() => {
     call("/notifications").then(setItems).catch(() => setItems([]));
-  }, [call]);
+    // Opening the list clears the red number. Unread ones stay highlighted until clicked.
+    call("/notifications/seen", { method: "POST" }).then(refreshBadges).catch(() => {});
+  }, [call, refreshBadges]);
 
   async function open(n) {
     if (!n.is_read) {

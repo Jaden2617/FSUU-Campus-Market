@@ -5,14 +5,13 @@ import { peso, timeAgo } from "../api";
 import Avatar, { UserName } from "./Avatar";
 import Icon from "./Icon";
 import PhotoCarousel from "./PhotoCarousel";
+import Comments from "./Comments";
 import { ConfirmDialog, MarkSoldModal, PaymentModal, RateModal, ReportModal } from "./Dialogs";
 
 export default function PostCard({ post, onChange, onDelete, startWithComments = false }) {
   const { call, user, config, openChat, openEdit, toast } = useApp();
   const [showPicker, setShowPicker] = useState(false);
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState("");
+  const [showComments, setShowComments] = useState(startWithComments);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState(null); // "sold" | "rate" | "report" | "boost" | "delete"
   const [error, setError] = useState("");
@@ -77,43 +76,13 @@ export default function PostCard({ post, onChange, onDelete, startWithComments =
     if (updated) onChange(updated);
   }
 
-  async function loadComments() {
-    const list = await run(() => call(`/posts/${post.id}/comments`));
-    if (list) setComments(list);
-  }
-
-  async function toggleComments() {
-    const opening = !showComments;
-    setShowComments(opening);
-    if (opening) loadComments();
+  function toggleComments() {
+    setShowComments(!showComments);
   }
 
   useEffect(() => {
-    if (startWithComments) {
-      setShowComments(true);
-      loadComments();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (startWithComments) setShowComments(true);
   }, [startWithComments]);
-
-  async function addComment(e) {
-    e.preventDefault();
-    if (!commentText.trim()) return;
-    const comment = await run(() => call(`/posts/${post.id}/comments`, { method: "POST", body: { text: commentText } }));
-    if (comment) {
-      setComments([...comments, comment]);
-      setCommentText("");
-      onChange({ ...post, comment_count: post.comment_count + 1 });
-    }
-  }
-
-  async function deleteComment(id) {
-    const ok = await run(() => call(`/comments/${id}`, { method: "DELETE" }));
-    if (ok) {
-      setComments(comments.filter((c) => c.id !== id));
-      onChange({ ...post, comment_count: Math.max(0, post.comment_count - 1) });
-    }
-  }
 
   async function setStatus(status) {
     const updated = await run(() => call(`/posts/${post.id}/status`, { method: "PATCH", body: { status } }));
@@ -323,44 +292,10 @@ export default function PostCard({ post, onChange, onDelete, startWithComments =
       {error && <p className="error post-error">{error}</p>}
 
       {showComments && (
-        <div className="comments">
-          {comments.map((c) => {
-            const commenter = c.user.id === user.id ? user : c.user;
-            const canDelete = c.user.id === user.id || post.is_mine || user.is_admin;
-            return (
-              <div className="comment" key={c.id}>
-                <a href={`#/profile/${commenter.id}`}>
-                  <Avatar user={commenter} size={32} />
-                </a>
-                <div>
-                  <div className="comment-bubble">
-                    <UserName user={commenter} />
-                    <p>{c.text}</p>
-                  </div>
-                  <span className="muted small comment-meta">
-                    {timeAgo(c.created_at)}
-                    {canDelete && (
-                      <button className="link-btn small muted" onClick={() => deleteComment(c.id)}>
-                        Delete
-                      </button>
-                    )}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-          <form className="comment-form" onSubmit={addComment}>
-            <Avatar user={user} size={32} />
-            <input
-              placeholder={isLooking ? "Have this? Let them know..." : "Ask if it's still available..."}
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-            />
-            <button className="icon-btn send" type="submit" title="Send" disabled={!commentText.trim()}>
-              <Icon name="send" size={18} />
-            </button>
-          </form>
-        </div>
+        <Comments
+          post={post}
+          onCountChange={(change) => onChange({ ...post, comment_count: Math.max(0, post.comment_count + change) })}
+        />
       )}
 
       {dialog === "sold" && (

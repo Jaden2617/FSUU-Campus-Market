@@ -97,10 +97,22 @@ class Comment(Base):
     id = Column(Integer, primary_key=True)
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    parent_id = Column(Integer, nullable=True)  # set when this is a reply to another comment
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, nullable=True)  # set when the comment is edited
 
     user = relationship("User")
+
+
+class CommentReaction(Base):
+    """Each user can have one reaction per comment."""
+    __tablename__ = "comment_reactions"
+    __table_args__ = (UniqueConstraint("comment_id", "user_id"),)
+    id = Column(Integer, primary_key=True)
+    comment_id = Column(Integer, ForeignKey("comments.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    emoji = Column(String, nullable=False)
 
 
 class Reaction(Base):
@@ -173,7 +185,8 @@ class Notification(Base):
     type = Column(String, nullable=False)
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=True)
     text = Column(String, nullable=False)
-    is_read = Column(Boolean, default=False)
+    is_read = Column(Boolean, default=False)   # clicked on
+    seen = Column(Boolean, default=False)      # shown in the list (clears the red number)
     created_at = Column(DateTime, default=utc_now)
 
     actor = relationship("User", foreign_keys=[actor_id])
@@ -246,6 +259,13 @@ NEW_COLUMNS = {
     },
     "messages": {
         "image_url": "VARCHAR",
+    },
+    "comments": {
+        "parent_id": "INTEGER",
+        "updated_at": "TIMESTAMP",
+    },
+    "notifications": {
+        "seen": "BOOLEAN DEFAULT FALSE",
     },
 }
 

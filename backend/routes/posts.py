@@ -9,7 +9,7 @@ from sqlalchemy import or_
 import config
 from auth import get_db, get_current_user, is_admin
 from database import (
-    User, Post, PostPhoto, Comment, Reaction, SavedPost, Rating, Message,
+    User, Post, PostPhoto, Comment, CommentReaction, Reaction, SavedPost, Rating, Message,
     Notification, Report, PaymentRequest, utc_now,
 )
 from helpers import (
@@ -23,6 +23,7 @@ PAGE_SIZE = 20
 
 class CommentData(BaseModel):
     text: str
+    parent_id: Optional[int] = None
 
 
 class ReactData(BaseModel):
@@ -233,6 +234,9 @@ def delete_post(post_id: int, db=Depends(get_db), me=Depends(get_current_user)):
     if post.image_url and not db.query(PostPhoto).filter(PostPhoto.post_id == post_id).count():
         delete_photo(post.image_url, db)
     db.query(PostPhoto).filter(PostPhoto.post_id == post_id).delete()
+    comment_ids = [c.id for c in db.query(Comment.id).filter(Comment.post_id == post_id)]
+    if comment_ids:
+        db.query(CommentReaction).filter(CommentReaction.comment_id.in_(comment_ids)).delete(synchronize_session=False)
     db.query(Comment).filter(Comment.post_id == post_id).delete()
     db.query(Reaction).filter(Reaction.post_id == post_id).delete()
     db.query(SavedPost).filter(SavedPost.post_id == post_id).delete()
@@ -313,34 +317,116 @@ def react(post_id: int, data: ReactData, db=Depends(get_db), me=Depends(get_curr
     return post_info(post, me, db)
 
 
-def comment_info(comment):
-    return {
-        "id": comment.id,
-        "text": comment.text,
-        "created_at": iso_time(comment.created_at),
-        "user": public_user(comment.user),
-    }
+def comments_info(comments, me, db):
+    """Turns comments into what the app needs, with their reactions
+    (one extra database query no matter how many comments)."""
+    ids = [c.id for c in comments]
+    reactions = {}
+    if ids:
+        for r in db.query(CommentReaction).filter(CommentReaction.comment_id.in_(ids)):
+            reactions.setdefault(r.comment_id, []).append(r)
+    result = []
+    for c in comments:
+        counts = {}
+        mine = None
+        for r in reactions.get(c.id, []):
+            counts[r.emoji] = counts.get(r.emoji, 0) + 1
+            if r.user_id == me.id:
+                mine = r.emoji
+        result.append({
+            "id": c.id,
+            "parent_id": c.parent_id,
+            "text": c.text,
+            "created_at": iso_time(c.created_at),
+            "edited": c.updated_at is not None,
+            "user": public_user(c.user),
+            "reactions": counts,
+            "reaction_total": sum(counts.values()),
+            "my_reaction": mine,
+        })
+    return result
+
+
+def comment_info(comment, me, db):
+    return comments_info([comment], me, db)[0]
+
+
+def get_comment_or_404(comment_id, db, me):
+    comment = db.get(Comment, comment_id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    get_post_or_404(comment.post_id, db, me)  # also hides comments on hidden posts
+    return comment
 
 
 @router.get("/posts/{post_id}/comments")
 def get_comments(post_id: int, db=Depends(get_db), me=Depends(get_current_user)):
     get_post_or_404(post_id, db, me)
     comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.id).all()
-    return [comment_info(c) for c in comments]
+    return comments_info(comments, me, db)
 
 
 @router.post("/posts/{post_id}/comments")
 def add_comment(post_id: int, data: CommentData, db=Depends(get_db), me=Depends(get_current_user)):
     post = get_post_or_404(post_id, db, me)
-    if not data.text.strip():
+    text = data.text.strip()
+    if not text:
         raise HTTPException(status_code=400, detail="Comment can't be empty")
-    comment = Comment(post_id=post_id, user_id=me.id, text=data.text.strip()[:1000])
+
+    replying_to = None
+    parent_id = None
+    if data.parent_id:
+        replying_to = db.get(Comment, data.parent_id)
+        if not replying_to or replying_to.post_id != post_id:
+            raise HTTPException(status_code=404, detail="That comment was deleted")
+        # Replies stay one level deep (like Facebook): a reply to a reply joins the same thread
+        parent_id = replying_to.parent_id or replying_to.id
+
+    comment = Comment(post_id=post_id, user_id=me.id, parent_id=parent_id, text=text[:1000])
     db.add(comment)
-    short = data.text.strip()[:60]
-    notify(db, post.user_id, "comment", f"{me.name} commented on “{post.title}”: {short}", actor=me, post_id=post_id)
+    short = text[:60]
+    if replying_to:
+        notify(db, replying_to.user_id, "reply", f"{me.name} replied to your comment on “{post.title}”: {short}",
+               actor=me, post_id=post_id)
+    if not replying_to or replying_to.user_id != post.user_id:
+        notify(db, post.user_id, "comment", f"{me.name} commented on “{post.title}”: {short}", actor=me, post_id=post_id)
     db.commit()
     db.refresh(comment)
-    return comment_info(comment)
+    return comment_info(comment, me, db)
+
+
+@router.put("/comments/{comment_id}")
+def edit_comment(comment_id: int, data: CommentData, db=Depends(get_db), me=Depends(get_current_user)):
+    comment = get_comment_or_404(comment_id, db, me)
+    if comment.user_id != me.id:
+        raise HTTPException(status_code=403, detail="You can only edit your own comments")
+    text = data.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Comment can't be empty")
+    if text[:1000] != comment.text:
+        comment.text = text[:1000]
+        comment.updated_at = utc_now()
+        db.commit()
+    return comment_info(comment, me, db)
+
+
+@router.post("/comments/{comment_id}/react")
+def react_to_comment(comment_id: int, data: ReactData, db=Depends(get_db), me=Depends(get_current_user)):
+    comment = get_comment_or_404(comment_id, db, me)
+    if data.emoji not in config.REACTIONS:
+        raise HTTPException(status_code=400, detail="Unknown reaction")
+    existing = db.query(CommentReaction).filter(
+        CommentReaction.comment_id == comment_id, CommentReaction.user_id == me.id).first()
+    if existing and existing.emoji == data.emoji:
+        db.delete(existing)            # same reaction again = remove it
+    elif existing:
+        existing.emoji = data.emoji    # different reaction = change it
+    else:
+        db.add(CommentReaction(comment_id=comment_id, user_id=me.id, emoji=data.emoji))
+        notify(db, comment.user_id, "reaction",
+               f"{me.name} reacted {data.emoji} to your comment: {comment.text[:50]}", actor=me, post_id=comment.post_id)
+    db.commit()
+    return comment_info(comment, me, db)
 
 
 @router.delete("/comments/{comment_id}")
@@ -351,9 +437,12 @@ def delete_comment(comment_id: int, db=Depends(get_db), me=Depends(get_current_u
     post = db.get(Post, comment.post_id)
     if comment.user_id != me.id and (not post or post.user_id != me.id) and not is_admin(me):
         raise HTTPException(status_code=403, detail="You can't delete this comment")
-    db.delete(comment)
+    # Deleting a comment also deletes its replies
+    ids = [comment.id] + [c.id for c in db.query(Comment.id).filter(Comment.parent_id == comment.id)]
+    db.query(CommentReaction).filter(CommentReaction.comment_id.in_(ids)).delete(synchronize_session=False)
+    db.query(Comment).filter(Comment.id.in_(ids)).delete(synchronize_session=False)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "deleted_ids": ids}
 
 
 @router.post("/posts/{post_id}/save")

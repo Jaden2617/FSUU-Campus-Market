@@ -167,7 +167,17 @@ def get_notifications(db=Depends(get_db), me=Depends(get_current_user)):
 @router.post("/notifications/read-all")
 def read_all(db=Depends(get_db), me=Depends(get_current_user)):
     db.query(Notification).filter(Notification.user_id == me.id, Notification.is_read == False).update(  # noqa: E712
-        {Notification.is_read: True})
+        {Notification.is_read: True, Notification.seen: True})
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/notifications/seen")
+def mark_seen(db=Depends(get_db), me=Depends(get_current_user)):
+    """Opening the notifications clears the red number (like Facebook).
+    Each one stays highlighted until it's clicked."""
+    db.query(Notification).filter(Notification.user_id == me.id, Notification.seen == False).update(  # noqa: E712
+        {Notification.seen: True})
     db.commit()
     return {"ok": True}
 
@@ -177,6 +187,7 @@ def read_one(notification_id: int, db=Depends(get_db), me=Depends(get_current_us
     n = db.get(Notification, notification_id)
     if n and n.user_id == me.id:
         n.is_read = True
+        n.seen = True
         db.commit()
     return {"ok": True}
 
@@ -186,6 +197,7 @@ def badges(db=Depends(get_db), me=Depends(get_current_user)):
     """The red numbers on the top bar, in one quick request."""
     return {
         "messages": db.query(Message).filter(Message.receiver_id == me.id, Message.is_read == False).count(),  # noqa: E712
-        "notifications": db.query(Notification).filter(Notification.user_id == me.id, Notification.is_read == False).count(),  # noqa: E712
+        "notifications": db.query(Notification).filter(
+            Notification.user_id == me.id, Notification.is_read == False, Notification.seen == False).count(),  # noqa: E712
         "friend_requests": db.query(Friendship).filter(Friendship.addressee_id == me.id, Friendship.status == "pending").count(),
     }
