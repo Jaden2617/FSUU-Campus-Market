@@ -148,7 +148,7 @@ function UserMenu({ close }) {
       <button className="menu-item" data-sound="none" onClick={() => setSounds(!sounds)}>
         <Icon name={sounds ? "volume" : "volumeOff"} size={19} />
         Sound effects
-        <span className={`switch ${sounds ? "on" : ""}`} aria-hidden="true" />
+        <span className={`toggle-switch ${sounds ? "on" : ""}`} aria-hidden="true" />
       </button>
       {!install.installed && (install.canPrompt || install.ios) && (
         <button

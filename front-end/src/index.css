@@ -3718,7 +3718,7 @@ img.avatar {
 }
 
 /* On/off switch (Sound effects in the menu) */
-.switch {
+.toggle-switch {
   position: relative;
   flex-shrink: 0;
   width: 36px;
@@ -3729,7 +3729,7 @@ img.avatar {
   transition: background 0.2s;
 }
 
-.switch::after {
+.toggle-switch::after {
   content: "";
   position: absolute;
   top: 2px;
@@ -3742,10 +3742,10 @@ img.avatar {
   transition: transform 0.2s;
 }
 
-.switch.on {
+.toggle-switch.on {
   background: var(--primary);
 }
 
-.switch.on::after {
+.toggle-switch.on::after {
   transform: translateX(16px);
 }
